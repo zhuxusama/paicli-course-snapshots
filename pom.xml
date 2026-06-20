@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s05 HITL、策略围栏与审计副作用</description>
+    <description>PaiCLI 渐进式构建课程 - s06 Slash 命令与配置</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

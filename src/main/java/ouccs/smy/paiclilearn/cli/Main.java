@@ -14,14 +14,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * s03 CLI 入口：使用 Agent 执行 ReAct 循环。
+ * s06 CLI 入口：Slash 命令解析 + 模型切换 + 配置优先级。
  * <p>
- * 与 s02 的区别：
+ * [s06 修改] 与 s05 的区别：
  * <ul>
- *   <li>不再直接调用 llmClient.chat()，而是通过 Agent.run() 进入 ReAct 循环</li>
- *   <li>支持多轮推理：Agent 自动管理 conversationHistory</li>
- *   <li>支持 /clear 命令清空对话历史</li>
- *   <li>提示 /model 切换后需重启（s06 加入运行时切换）</li>
+ *   <li>引入 CliCommandParser 解析 /xxx 命令</li>
+ *   <li>未知命令在 CLI 层直接拒绝（不再进入 Agent）</li>
+ *   <li>/model 查询当前 provider，并解析需要在重启时生效的目标 provider</li>
+ *   <li>/clear 通过 parser 统一路由</li>
  * </ul>
  * </p>
  */
@@ -43,53 +43,69 @@ public class Main {
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
         Agent agent = new Agent(llmClient, toolRegistry);
-        agent.setHitlRegistry(hitlRegistry);  // [s05 新增] 注入 HITL 审批链
+        agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v5 (Chapter 05 - HITL 审批 + 策略围栏 + 审计)");
-        System.out.println("Provider: " + llmClient.getProviderName());
-        System.out.println("模型: " + llmClient.getModelName());
-        System.out.println("工具: read_file, list_dir, glob_files, grep_code, write_file, exec, create_project");
-        System.out.println("安全: PathGuard + CommandGuard + HITL 审批 (y/n/a/s)");
-        System.out.println("输入 'exit' 退出；输入 '/clear' 清空对话历史\n");
+        System.out.println("PaiCLI 教学版 v6 (Chapter 06 - Slash 命令与配置)");
+        System.out.println("命令: /model [provider] 切换模型 | /clear 清空历史 | /exit 退出");
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
             System.out.print("> ");
             String input = scanner.nextLine().trim();
 
-            if ("exit".equalsIgnoreCase(input)) {
-                break;
-            }
-            if (input.isEmpty()) {
-                continue;
-            }
-            if ("/clear".equalsIgnoreCase(input)) {
-                agent.clearHistory();
-                System.out.println("对话历史已清空。\n");
-                continue;
+            // [s06 新增] 命令解析分流
+            var parsed = CliCommandParser.parse(input);
+
+            switch (parsed.type()) {
+                // ---- [s06 新增] 退出 ----
+                case EXIT -> {
+                    System.out.println("再见!");
+                    scanner.close();
+                    return;
+                }
+                // ---- [s06 新增] 清空对话 ----
+                case CLEAR -> {
+                    agent.clearHistory();
+                    hitlRegistry.hitlHandler().clearApprovedAll();
+                    System.out.println("对话历史已清空。\n");
+                    continue;
+                }
+                // ---- [s06 新增] 切换模型 ----
+                case SWITCH_MODEL -> {
+                    String provider = parsed.payload();
+                    if (provider != null && !provider.isBlank()) {
+                        System.out.println("目标模型: " + provider
+                                + "。本章尚未实现热切换，请修改环境配置后重启。");
+                    } else {
+                        System.out.println("当前模型: " + llmClient.getProviderName()
+                                + " / " + llmClient.getModelName());
+                    }
+                    System.out.println();
+                    continue;
+                }
+                // ---- [s06 新增] 未知 /xxx → CLI 层直接拒绝 ----
+                case UNKNOWN_COMMAND -> {
+                    System.out.println("❌ 未知命令: " + parsed.payload() + "\n");
+                    continue;
+                }
+                // ---- 普通文本 → 进入 Agent ----
+                case NONE -> { /* fall through to Agent */ }
             }
 
+            if (input.isEmpty()) continue;
+
             try {
-                // 设置流式监听器——实时打印模型输出
                 agent.setStreamListener(new LlmClient.StreamListener() {
                     @Override
                     public void onContentDelta(String delta) {
                         System.out.print(delta);
                         System.out.flush();
                     }
-
-                    @Override
-                    public void onReasoningDelta(String delta) {
-                        // 本章暂不把推理过程写入正文区
-                    }
                 });
 
                 String result = agent.run(input);
-                if (!result.isEmpty()) {
-                    System.out.println(result);
-                } else {
-                    System.out.println();
-                }
+                if (!result.isEmpty()) System.out.println(result);
+                else System.out.println();
 
                 System.out.println("[" + agent.statusSummary() + "]\n");
             } catch (Exception e) {
@@ -97,8 +113,5 @@ public class Main {
                 LOG.error("Agent 执行异常", e);
             }
         }
-
-        System.out.println("再见!");
-        scanner.close();
     }
 }

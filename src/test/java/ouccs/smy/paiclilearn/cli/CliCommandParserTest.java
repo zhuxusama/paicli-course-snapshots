@@ -1,0 +1,68 @@
+package ouccs.smy.paiclilearn.cli;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/** [s06 新增] 验证 CliCommandParser 的命令解析与分流逻辑。 */
+class CliCommandParserTest {
+
+    @Test void normalInputReturnsNone() {
+        var cmd = CliCommandParser.parse("hello world");
+        assertEquals(CliCommandParser.CommandType.NONE, cmd.type());
+    }
+
+    @Test void emptyInputReturnsNone() {
+        assertEquals(CliCommandParser.CommandType.NONE, CliCommandParser.parse("").type());
+        assertEquals(CliCommandParser.CommandType.NONE, CliCommandParser.parse(null).type());
+    }
+
+    @Test void parsesClearCommand() {
+        var cmd = CliCommandParser.parse("/clear");
+        assertEquals(CliCommandParser.CommandType.CLEAR, cmd.type());
+
+        cmd = CliCommandParser.parse("clear");
+        assertEquals(CliCommandParser.CommandType.CLEAR, cmd.type());
+
+        cmd = CliCommandParser.parse("/CLEAR");
+        assertEquals(CliCommandParser.CommandType.CLEAR, cmd.type());
+    }
+
+    @Test void parsesExitCommand() {
+        assertEquals(CliCommandParser.CommandType.EXIT, CliCommandParser.parse("/exit").type());
+        assertEquals(CliCommandParser.CommandType.EXIT, CliCommandParser.parse("exit").type());
+    }
+
+    @Test void parsesModelCommand() {
+        var cmd = CliCommandParser.parse("/model");
+        assertEquals(CliCommandParser.CommandType.SWITCH_MODEL, cmd.type());
+        assertNull(cmd.payload());
+
+        cmd = CliCommandParser.parse("/model deepseek");
+        assertEquals(CliCommandParser.CommandType.SWITCH_MODEL, cmd.type());
+        assertEquals("deepseek", cmd.payload());
+
+        cmd = CliCommandParser.parse("/model    kimi  ");
+        assertEquals(CliCommandParser.CommandType.SWITCH_MODEL, cmd.type());
+        assertEquals("kimi", cmd.payload());
+    }
+
+    @Test void unknownSlashCommandRejected() {
+        var cmd = CliCommandParser.parse("/unknown");
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, cmd.type());
+        assertEquals("/unknown", cmd.payload());
+
+        cmd = CliCommandParser.parse("/plan");
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, cmd.type(),
+                "s06 未实现的命令应返回 UNKNOWN_COMMAND, s11 起 /plan 变为有效");
+
+        cmd = CliCommandParser.parse("/team");
+        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, cmd.type(),
+                "s06 未实现 /team, s12 起变为有效");
+    }
+
+    @Test void plainTextWithSlashInsideNotTreatedAsCommand() {
+        var cmd = CliCommandParser.parse("请帮我读 /tmp/config 文件");
+        assertEquals(CliCommandParser.CommandType.NONE, cmd.type(),
+                "非行首的 / 不视为命令");
+    }
+}
