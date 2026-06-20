@@ -1,18 +1,22 @@
 package ouccs.smy.paiclilearn.cli;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
-import ouccs.smy.paiclilearn.llm.OpenAiCompatibleClient;
+import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
 import ouccs.smy.paiclilearn.llm.LlmClient.Message;
 import ouccs.smy.paiclilearn.llm.LlmClient.StreamListener;
 
 import java.util.List;
 import java.util.Scanner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 第一章的最小命令行入口，负责读取用户消息并流式打印真实模型响应。
  */
 public class Main {
+    private static final Logger LOG = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) {
         LlmConfig config;
@@ -24,11 +28,11 @@ public class Main {
             return;
         }
 
-        LlmClient llmClient = new OpenAiCompatibleClient(config);
+        LlmClient llmClient = LlmClientFactory.create(config);
 
-        System.out.println("PaiCLI 教学版 v1 (Chapter 01)");
-        System.out.println("协议: OpenAI-compatible");
-        System.out.println("模型: " + config.model());
+        System.out.println("PaiCLI 教学版 v2 (Chapter 02 - Multi-Provider Tool Calls)");
+        System.out.println("Provider: " + llmClient.getProviderName());
+        System.out.println("模型: " + llmClient.getModelName());
         System.out.println("输入 'exit' 退出\n");
 
         StreamListener streamListener = new StreamListener() {
@@ -53,7 +57,7 @@ public class Main {
 
             try {
                 LlmClient.ChatResponse response = llmClient.chat(
-                        List.of(Message.user(input)),
+                        List.of(Message.user(input)), List.of(),
                         streamListener
                 );
                 if (!response.content().isEmpty()) {
@@ -61,6 +65,7 @@ public class Main {
                 }
                 System.out.printf("[tokens: in=%d out=%d]%n%n",
                         response.inputTokens(), response.outputTokens());
+                LlmTraceLogger.logReasoning(LOG, "cli", llmClient, response.reasoningContent());
             } catch (Exception e) {
                 System.err.println("错误: " + e.getMessage());
             }

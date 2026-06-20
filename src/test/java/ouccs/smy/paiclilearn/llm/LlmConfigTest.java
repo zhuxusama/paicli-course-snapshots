@@ -1,6 +1,5 @@
 package ouccs.smy.paiclilearn.llm;
 
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -8,45 +7,27 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 class LlmConfigTest {
-
     @Test
-    void loadsGlmConfigFromNearestParentDotEnv(@TempDir Path tempDir) throws Exception {
-        Path envFile = tempDir.resolve(".env");
-        Files.writeString(envFile, """
-                GLM_API_KEY=sk-test-glm-key
-                OPENAI_COMPATIBLE_MODEL=glm-4-plus
-                """);
-
-        Path subDir = tempDir.resolve("sub").resolve("project");
-        Files.createDirectories(subDir);
-
-        LlmConfig config = LlmConfig.fromSources(Map.of(), subDir);
-
-        Assertions.assertEquals("https://open.bigmodel.cn/api/paas/v4/chat/completions", config.apiUrl());
-        Assertions.assertEquals("sk-test-glm-key", config.apiKey());
-        Assertions.assertEquals("glm-4-plus", config.model());
+    void selectsProviderFromNearestDotEnv(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve(".env"), "PAICLI_PROVIDER=step\nSTEP_API_KEY=file-key\nSTEP_MODEL=step-model\n");
+        Path child = Files.createDirectories(root.resolve("project/sub"));
+        LlmConfig config = LlmConfig.fromSources(Map.of(), child);
+        assertEquals("step", config.provider());
+        assertEquals("file-key", config.apiKey());
+        assertEquals("step-model", config.model());
     }
 
     @Test
-    void environmentOverridesDotEnv(@TempDir Path tempDir) throws Exception {
-        Path envFile = tempDir.resolve(".env");
-        Files.writeString(envFile, """
-                OPENAI_COMPATIBLE_API_KEY=sk-env-file-key
-                OPENAI_COMPATIBLE_API_URL=https://example.invalid/v1/chat/completions
-                OPENAI_COMPATIBLE_MODEL=file-model
-                """);
-
-        Map<String, String> envOverrides = Map.of(
-                "OPENAI_COMPATIBLE_API_KEY", "sk-override-key",
-                "OPENAI_COMPATIBLE_API_URL", "https://api.example.test/v1/chat/completions",
-                "OPENAI_COMPATIBLE_MODEL", "environment-model"
-        );
-
-        LlmConfig config = LlmConfig.fromSources(envOverrides, tempDir);
-
-        Assertions.assertEquals("sk-override-key", config.apiKey());
-        Assertions.assertEquals("environment-model", config.model());
-        Assertions.assertEquals("https://api.example.test/v1/chat/completions", config.apiUrl());
+    void environmentOverridesDotEnv(@TempDir Path root) throws Exception {
+        Files.writeString(root.resolve(".env"), "PAICLI_PROVIDER=glm\nGLM_API_KEY=file-key\n");
+        LlmConfig config = LlmConfig.fromSources(Map.of(
+                "PAICLI_PROVIDER", "deepseek", "DEEPSEEK_API_KEY", "env-key",
+                "DEEPSEEK_MODEL", "deepseek-reasoner"), root);
+        assertEquals("deepseek", config.provider());
+        assertEquals("env-key", config.apiKey());
+        assertEquals("deepseek-reasoner", config.model());
     }
 }
