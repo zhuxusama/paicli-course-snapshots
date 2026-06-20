@@ -10,7 +10,7 @@ import java.util.Map;
  * LLM 配置加载器。
  * <p>
  * 按优先级从环境变量和 .env 文件中读取 API 密钥、端点和模型名称，
- * 支持 OpenAI 兼容三件套、GLM、DeepSeek 等快捷配置。
+ * 支持 OpenAI 兼容三件套和 GLM 快捷配置。
  *
  * @param apiUrl API 端点 URL
  * @param apiKey API 密钥
@@ -26,12 +26,6 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
     private static final String GLM_DEFAULT_URL  = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
     private static final String GLM_DEFAULT_MODEL = "glm-4-flash";
 
-    private static final String DEEPSEEK_API_KEY     = "DEEPSEEK_API_KEY";
-    private static final String DEEPSEEK_DEFAULT_URL  = "https://api.deepseek.com/chat/completions";
-    private static final String DEEPSEEK_DEFAULT_MODEL = "deepseek-chat";
-
-    // ── 工厂方法 ─────────────────────────────────────────────────
-
     /**
      * 从当前系统环境变量和工作目录加载配置。
      */
@@ -46,7 +40,7 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
      * <ol>
      *   <li>向上查找最近的 .env 文件并解析</li>
      *   <li>用环境变量覆盖 .env 值（环境变量优先）</li>
-     *   <li>按优先级检查：OpenAI 兼容三件套 → GLM → DeepSeek</li>
+     *   <li>按优先级检查：OpenAI 兼容三件套 → GLM</li>
      * </ol>
      *
      * @param environment    环境变量映射（通常为 {@link System#getenv()}）
@@ -60,7 +54,7 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
         // 环境变量覆盖 .env 值
         for (Map.Entry<String, String> entry : environment.entrySet()) {
             if (present(entry.getValue())) {
-                env.putIfAbsent(entry.getKey(), entry.getValue());
+                env.put(entry.getKey(), entry.getValue());
             }
         }
 
@@ -84,15 +78,6 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
             );
         }
 
-        // 3) DeepSeek 快捷配置
-        if (present(env.get(DEEPSEEK_API_KEY))) {
-            return new LlmConfig(
-                    valueOrDefault(env.get(OPENAI_COMPATIBLE_API_URL), DEEPSEEK_DEFAULT_URL),
-                    env.get(DEEPSEEK_API_KEY),
-                    valueOrDefault(env.get(OPENAI_COMPATIBLE_MODEL), DEEPSEEK_DEFAULT_MODEL)
-            );
-        }
-
         throw new IllegalStateException("""
                 未找到 LLM 配置。请选择以下任一方式配置：
 
@@ -104,13 +89,8 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
                   方式 B — GLM（智谱）：
                     GLM_API_KEY=your-glm-key
 
-                  方式 C — DeepSeek：
-                    DEEPSEEK_API_KEY=your-deepseek-key
-
                 配置可写入 .env 文件或设置为系统环境变量（环境变量优先）。""");
     }
-
-    // ── 私有辅助方法 ─────────────────────────────────────────────
 
     /**
      * 从 startDirectory 开始向上查找最近的 .env 文件并解析为 Map。
@@ -123,7 +103,7 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
                 try {
                     return parseDotEnv(Files.readString(dotEnv));
                 } catch (IOException e) {
-                    // 读取失败则继续向上查找
+                    // 当前目录不可读时继续向父目录查找。
                 }
             }
             Path parent = dir.getParent();
@@ -153,7 +133,7 @@ public record LlmConfig(String apiUrl, String apiKey, String model) {
             }
             int eq = line.indexOf('=');
             if (eq <= 0) {
-                continue; // 无效行，跳过
+                continue;
             }
             String key = line.substring(0, eq).trim();
             String value = stripOptionalQuotes(line.substring(eq + 1).trim());

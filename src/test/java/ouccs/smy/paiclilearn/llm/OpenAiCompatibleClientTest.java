@@ -20,8 +20,6 @@ class OpenAiCompatibleClientTest {
                     .setResponseCode(200)
                     .setHeader("Content-Type", "text/event-stream")
                     .setBody("""
-                            data: {"choices":[{"delta":{"reasoning_content":"想一下。"}}]}
-
                             data: {"choices":[{"delta":{"content":"你好"}}]}
 
                             data: {"choices":[{"delta":{"content":"，PaiCLI"}}],"usage":{"prompt_tokens":11,"completion_tokens":3}}
@@ -48,7 +46,6 @@ class OpenAiCompatibleClientTest {
 
             Assertions.assertEquals("你好，PaiCLI", response.content());
             Assertions.assertEquals("你好，PaiCLI", streamedRef.get());
-            Assertions.assertEquals("想一下。", response.reasoningContent());
             Assertions.assertEquals(11, response.inputTokens());
             Assertions.assertEquals(3, response.outputTokens());
 

@@ -19,7 +19,7 @@ import java.util.concurrent.TimeUnit;
  * 基于 OpenAI 兼容协议（SSE 流式）的 LLM 客户端实现。
  * <p>
  * 适用于任何遵循 {@code /v1/chat/completions} + SSE 格式的 API 端点，
- * 包括 OpenAI、GLM（智谱）、DeepSeek、Step、Kimi 等。
+ * 第一章使用 GLM 作为真实运行示例，兼容端点也可以通过三项环境变量配置。
  */
 public class OpenAiCompatibleClient implements LlmClient {
 
@@ -49,8 +49,6 @@ public class OpenAiCompatibleClient implements LlmClient {
         this.httpClient = httpClient;
     }
 
-    // ── LlmClient 实现 ────────────────────────────────────────────
-
     @Override
     public ChatResponse chat(List<Message> messages, StreamListener listener) throws IOException {
         RequestBody body = buildRequestBody(messages);
@@ -63,6 +61,9 @@ public class OpenAiCompatibleClient implements LlmClient {
         try (Response response = httpClient.newCall(request).execute()) {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "";
+                if (errorBody.length() > 1000) {
+                    errorBody = errorBody.substring(0, 1000) + "...";
+                }
                 throw new IOException("LLM API 请求失败: HTTP " + response.code() + " - " + errorBody);
             }
             if (response.body() == null) {
@@ -71,8 +72,6 @@ public class OpenAiCompatibleClient implements LlmClient {
             return readSse(response.body().source(), listener);
         }
     }
-
-    // ── SSE 流解析 ────────────────────────────────────────────────
 
     /**
      * 解析 Server-Sent Events 流，通过 listener 回调增量内容。
@@ -84,7 +83,6 @@ public class OpenAiCompatibleClient implements LlmClient {
      */
     private ChatResponse readSse(BufferedSource source, StreamListener listener) throws IOException {
         StringBuilder contentBuilder = new StringBuilder();
-        StringBuilder reasoningBuilder = new StringBuilder();
         int inputTokens = 0;
         int outputTokens = 0;
 
@@ -95,80 +93,57 @@ public class OpenAiCompatibleClient implements LlmClient {
             }
 
             line = line.trim();
-            // 跳过空行和注释
+            // SSE 空行分隔事件，以冒号开头的是服务端注释。
             if (line.isEmpty() || line.startsWith(":")) {
                 continue;
             }
 
-            // 只处理 data: 行
+            // 第一章只消费聊天接口使用的 data 字段。
             if (!line.startsWith("data:")) {
                 continue;
             }
 
             String data = line.substring(5).trim();
 
-            // 流结束标记
             if ("[DONE]".equals(data)) {
                 break;
             }
 
+            JsonNode json;
             try {
-                JsonNode json = MAPPER.readTree(data);
-
-                // 兼容 delta 和 message 两种格式
-                JsonNode deltaOrMessage = json.path("choices")
-                        .path(0)
-                        .has("delta")
-                        ? json.path("choices").path(0).path("delta")
-                        : json.path("choices").path(0).path("message");
-
-                // 正文内容增量
-                if (deltaOrMessage.has("content") && !deltaOrMessage.path("content").isNull()) {
-                    String contentDelta = deltaOrMessage.path("content").asText("");
-                    if (!contentDelta.isEmpty()) {
-                        contentBuilder.append(contentDelta);
-                        listener.onContentDelta(contentDelta);
-                    }
-                }
-
-                // 推理内容增量（reasoning_content 或 reasoning）
-                if (deltaOrMessage.has("reasoning_content")) {
-                    String reasoningDelta = deltaOrMessage.path("reasoning_content").asText("");
-                    if (!reasoningDelta.isEmpty()) {
-                        reasoningBuilder.append(reasoningDelta);
-                        listener.onReasoningDelta(reasoningDelta);
-                    }
-                } else if (deltaOrMessage.has("reasoning")) {
-                    String reasoningDelta = deltaOrMessage.path("reasoning").asText("");
-                    if (!reasoningDelta.isEmpty()) {
-                        reasoningBuilder.append(reasoningDelta);
-                        listener.onReasoningDelta(reasoningDelta);
-                    }
-                }
-
-                // Token 统计（通常在最后一块或独立 usage 字段）
-                JsonNode usage = json.path("usage");
-                if (usage.has("prompt_tokens")) {
-                    inputTokens = usage.path("prompt_tokens").asInt();
-                }
-                if (usage.has("completion_tokens")) {
-                    outputTokens = usage.path("completion_tokens").asInt();
-                }
-
+                json = MAPPER.readTree(data);
             } catch (Exception e) {
-                // 单行解析失败不中断整条流，跳过即可
+                throw new IOException("无法解析 LLM SSE 数据: " + data, e);
+            }
+
+            JsonNode choice = json.path("choices").path(0);
+            JsonNode deltaOrMessage = choice.has("delta")
+                    ? choice.path("delta")
+                    : choice.path("message");
+
+            if (deltaOrMessage.has("content") && !deltaOrMessage.path("content").isNull()) {
+                String contentDelta = deltaOrMessage.path("content").asText("");
+                if (!contentDelta.isEmpty()) {
+                    contentBuilder.append(contentDelta);
+                    listener.onContentDelta(contentDelta);
+                }
+            }
+
+            JsonNode usage = json.path("usage");
+            if (usage.has("prompt_tokens")) {
+                inputTokens = usage.path("prompt_tokens").asInt();
+            }
+            if (usage.has("completion_tokens")) {
+                outputTokens = usage.path("completion_tokens").asInt();
             }
         }
 
         return new ChatResponse(
                 contentBuilder.toString(),
-                reasoningBuilder.toString(),
                 inputTokens,
                 outputTokens
         );
     }
-
-    // ── 请求体构建 ────────────────────────────────────────────────
 
     private RequestBody buildRequestBody(List<Message> messages) throws IOException {
         ObjectNode root = MAPPER.createObjectNode();
@@ -184,8 +159,6 @@ public class OpenAiCompatibleClient implements LlmClient {
 
         return RequestBody.create(MAPPER.writeValueAsString(root), JSON);
     }
-
-    // ── 默认 HttpClient ───────────────────────────────────────────
 
     private static OkHttpClient defaultHttpClient() {
         return new OkHttpClient.Builder()

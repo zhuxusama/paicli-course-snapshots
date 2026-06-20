@@ -1,5 +1,6 @@
 target/
 .env
+.idea/
 *.class
 *.jar
 *.war

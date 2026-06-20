@@ -1,10 +1,12 @@
 package ouccs.smy.paiclilearn.cli;
 
-import ouccs.smy.paiclilearn.agent.MiniAgent;
+import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.OpenAiCompatibleClient;
+import ouccs.smy.paiclilearn.llm.LlmClient.Message;
 import ouccs.smy.paiclilearn.llm.LlmClient.StreamListener;
 
+import java.util.List;
 import java.util.Scanner;
 
 public class Main {
@@ -20,10 +22,10 @@ public class Main {
         }
 
         LlmClient llmClient = new OpenAiCompatibleClient(config);
-        MiniAgent agent = new MiniAgent(llmClient);
 
         System.out.println("PaiCLI 教学版 v1 (Chapter 01)");
-        System.out.println("模型: " + llmClient.getProviderName() + " / " + llmClient.getModelName());
+        System.out.println("协议: OpenAI-compatible");
+        System.out.println("模型: " + config.model());
         System.out.println("输入 'exit' 退出\n");
 
         StreamListener streamListener = new StreamListener() {
@@ -47,11 +49,15 @@ public class Main {
             }
 
             try {
-                String response = agent.run(input, streamListener);
-                if (!response.isEmpty()) {
+                LlmClient.ChatResponse response = llmClient.chat(
+                        List.of(Message.user(input)),
+                        streamListener
+                );
+                if (!response.content().isEmpty()) {
                     System.out.println();
                 }
-                System.out.println();
+                System.out.printf("[tokens: in=%d out=%d]%n%n",
+                        response.inputTokens(), response.outputTokens());
             } catch (Exception e) {
                 System.err.println("错误: " + e.getMessage());
             }

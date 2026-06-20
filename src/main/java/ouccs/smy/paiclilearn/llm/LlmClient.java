@@ -6,8 +6,8 @@ import java.util.List;
 /**
  * LLM 客户端抽象接口。
  * <p>
- * 所有 LLM provider（GLM、DeepSeek、OpenAI 等）均通过此接口统一调用。
- * 支持同步调用和流式（SSE）回调两种模式。
+ * 第一章只接入一个 OpenAI-compatible 客户端，但先保留接口边界，
+ * 让后续章节可以在不改 CLI 的前提下增加更多 provider。
  */
 public interface LlmClient {
 
@@ -31,8 +31,6 @@ public interface LlmClient {
     default ChatResponse chat(List<Message> messages) throws IOException {
         return chat(messages, StreamListener.NO_OP);
     }
-
-    // ── 内部数据结构 ──────────────────────────────────────────────
 
     /**
      * 单条对话消息。
@@ -59,11 +57,10 @@ public interface LlmClient {
      * LLM 聊天响应。
      *
      * @param content          助手正文回复
-     * @param reasoningContent 推理过程文本（thinking 模式下可能非空）
      * @param inputTokens      输入 token 数（prompt_tokens）
      * @param outputTokens     输出 token 数（completion_tokens）
      */
-    record ChatResponse(String content, String reasoningContent, int inputTokens, int outputTokens) {
+    record ChatResponse(String content, int inputTokens, int outputTokens) {
     }
 
     /**
@@ -82,10 +79,5 @@ public interface LlmClient {
         default void onContentDelta(String delta) {
         }
 
-        /**
-         * 收到推理内容增量（reasoning_content / reasoning）。
-         */
-        default void onReasoningDelta(String delta) {
-        }
     }
 }
