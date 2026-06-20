@@ -9,6 +9,9 @@ import ouccs.smy.paiclilearn.llm.LlmClient.StreamListener;
 import java.util.List;
 import java.util.Scanner;
 
+/**
+ * 第一章的最小命令行入口，负责读取用户消息并流式打印真实模型响应。
+ */
 public class Main {
 
     public static void main(String[] args) {
