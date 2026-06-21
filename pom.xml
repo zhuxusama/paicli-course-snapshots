@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s08 短期与长期记忆</description>
+    <description>PaiCLI 渐进式构建课程 - s09 长上下文压缩与 Context 状态</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
