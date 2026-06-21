@@ -1,19 +1,26 @@
 package ouccs.smy.paiclilearn.cli;
 
+import ouccs.smy.paiclilearn.agent.Agent;
 import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
-import ouccs.smy.paiclilearn.llm.LlmClient.Message;
-import ouccs.smy.paiclilearn.llm.LlmClient.StreamListener;
 
-import java.util.List;
 import java.util.Scanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * 第一章的最小命令行入口，负责读取用户消息并流式打印真实模型响应。
+ * s03 CLI 入口：使用 Agent 执行 ReAct 循环。
+ * <p>
+ * 与 s02 的区别：
+ * <ul>
+ *   <li>不再直接调用 llmClient.chat()，而是通过 Agent.run() 进入 ReAct 循环</li>
+ *   <li>支持多轮推理：Agent 自动管理 conversationHistory</li>
+ *   <li>支持 /clear 命令清空对话历史</li>
+ *   <li>提示 /model 切换后需重启（s06 加入运行时切换）</li>
+ * </ul>
+ * </p>
  */
 public class Main {
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
@@ -29,19 +36,12 @@ public class Main {
         }
 
         LlmClient llmClient = LlmClientFactory.create(config);
+        Agent agent = new Agent(llmClient);
 
-        System.out.println("PaiCLI 教学版 v2 (Chapter 02 - Multi-Provider Tool Calls)");
+        System.out.println("PaiCLI 教学版 v3 (Chapter 03 - ReAct 循环与消息历史)");
         System.out.println("Provider: " + llmClient.getProviderName());
         System.out.println("模型: " + llmClient.getModelName());
-        System.out.println("输入 'exit' 退出\n");
-
-        StreamListener streamListener = new StreamListener() {
-            @Override
-            public void onContentDelta(String delta) {
-                System.out.print(delta);
-                System.out.flush();
-            }
-        };
+        System.out.println("输入 'exit' 退出；输入 '/clear' 清空对话历史\n");
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -54,20 +54,38 @@ public class Main {
             if (input.isEmpty()) {
                 continue;
             }
+            if ("/clear".equalsIgnoreCase(input)) {
+                agent.clearHistory();
+                System.out.println("对话历史已清空。\n");
+                continue;
+            }
 
             try {
-                LlmClient.ChatResponse response = llmClient.chat(
-                        List.of(Message.user(input)), List.of(),
-                        streamListener
-                );
-                if (!response.content().isEmpty()) {
+                // 设置流式监听器——实时打印模型输出
+                agent.setStreamListener(new LlmClient.StreamListener() {
+                    @Override
+                    public void onContentDelta(String delta) {
+                        System.out.print(delta);
+                        System.out.flush();
+                    }
+
+                    @Override
+                    public void onReasoningDelta(String delta) {
+                        // 本章暂不把推理过程写入正文区
+                    }
+                });
+
+                String result = agent.run(input);
+                if (!result.isEmpty()) {
+                    System.out.println(result);
+                } else {
                     System.out.println();
                 }
-                System.out.printf("[tokens: in=%d out=%d]%n%n",
-                        response.inputTokens(), response.outputTokens());
-                LlmTraceLogger.logReasoning(LOG, "cli", llmClient, response.reasoningContent());
+
+                System.out.println("[" + agent.statusSummary() + "]\n");
             } catch (Exception e) {
                 System.err.println("错误: " + e.getMessage());
+                LOG.error("Agent 执行异常", e);
             }
         }
 

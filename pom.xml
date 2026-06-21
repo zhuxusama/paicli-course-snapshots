@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s01 真实 LLM 流式 CLI 最小闭环</description>
+    <description>PaiCLI 渐进式构建课程 - s03 ReAct 循环与消息历史</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
