@@ -13,6 +13,7 @@ import java.util.Map;
  * @param personality 人格资源名称
  * @param currentDate 当前日期
  * @param zoneId 当前时区
+ * @param memoryContext 当前查询检索出的记忆上下文
  * @param variables 额外模板变量
  * @since s07
  */
@@ -21,6 +22,7 @@ public record PromptContext(
         String personality,
         LocalDate currentDate,
         ZoneId zoneId,
+        String memoryContext,
         Map<String, String> variables
 ) {
     public PromptContext {
@@ -28,6 +30,7 @@ public record PromptContext(
         personality = normalizeName(personality, "calm", "personality");
         zoneId = zoneId == null ? ZoneId.systemDefault() : zoneId;
         currentDate = currentDate == null ? LocalDate.now(zoneId) : currentDate;
+        memoryContext = memoryContext == null ? "" : memoryContext.trim();
         variables = variables == null ? Map.of() : Map.copyOf(variables);
     }
 
@@ -46,6 +49,11 @@ public record PromptContext(
         return key == null ? "" : variables.getOrDefault(key, "");
     }
 
+    /** 基于当前配置创建只替换记忆上下文的新实例。 */
+    public PromptContext withMemoryContext(String memoryContext) {
+        return new PromptContext(approvalMode, personality, currentDate, zoneId, memoryContext, variables);
+    }
+
     private static String normalizeName(String value, String fallback, String field) {
         String normalized = value == null || value.isBlank()
                 ? fallback : value.trim().toLowerCase(Locale.ROOT);
@@ -61,6 +69,7 @@ public record PromptContext(
         private String personality = "calm";
         private LocalDate currentDate;
         private ZoneId zoneId = ZoneId.systemDefault();
+        private String memoryContext = "";
         private final Map<String, String> variables = new LinkedHashMap<>();
 
         public Builder approvalMode(String approvalMode) {
@@ -83,6 +92,11 @@ public record PromptContext(
             return this;
         }
 
+        public Builder memoryContext(String memoryContext) {
+            this.memoryContext = memoryContext;
+            return this;
+        }
+
         public Builder variable(String key, Object value) {
             if (key != null && !key.isBlank() && value != null) {
                 variables.put(key.trim(), String.valueOf(value));
@@ -91,7 +105,7 @@ public record PromptContext(
         }
 
         public PromptContext build() {
-            return new PromptContext(approvalMode, personality, currentDate, zoneId, variables);
+            return new PromptContext(approvalMode, personality, currentDate, zoneId, memoryContext, variables);
         }
     }
 }

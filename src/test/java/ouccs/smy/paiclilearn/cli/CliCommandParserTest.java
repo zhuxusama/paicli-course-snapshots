@@ -65,4 +65,14 @@ class CliCommandParserTest {
         assertEquals(CliCommandParser.CommandType.NONE, cmd.type(),
                 "非行首的 / 不视为命令");
     }
+
+    @Test void parsesMemoryCommands() {
+        var save = CliCommandParser.parse("/save global 用户偏好中文");
+        assertEquals(CliCommandParser.CommandType.SAVE_MEMORY, save.type());
+        assertEquals("global 用户偏好中文", save.payload());
+
+        var memory = CliCommandParser.parse("/memory search 中文");
+        assertEquals(CliCommandParser.CommandType.MEMORY, memory.type());
+        assertEquals("search 中文", memory.payload());
+    }
 }

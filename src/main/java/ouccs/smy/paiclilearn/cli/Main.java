@@ -7,6 +7,7 @@ import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
+import ouccs.smy.paiclilearn.memory.MemoryManager;
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
 import java.util.Scanner;
@@ -42,11 +43,12 @@ public class Main {
         ToolRegistry toolRegistry = new ToolRegistry();
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
-        Agent agent = new Agent(llmClient, toolRegistry);
+        MemoryManager memoryManager = MemoryManager.createDefault(toolRegistry.getProjectPath().toString());
+        Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v6 (Chapter 06 - Slash 命令与配置)");
-        System.out.println("命令: /model [provider] 切换模型 | /clear 清空历史 | /exit 退出");
+        System.out.println("PaiCLI 教学版 v8 (Chapter 08 - 短期与长期记忆)");
+        System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /clear | /exit");
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -79,6 +81,49 @@ public class Main {
                     } else {
                         System.out.println("当前模型: " + llmClient.getProviderName()
                                 + " / " + llmClient.getModelName());
+                    }
+                    System.out.println();
+                    continue;
+                }
+                case SAVE_MEMORY -> {
+                    String payload = parsed.payload();
+                    if (payload == null || payload.isBlank()) {
+                        System.out.println("用法: /save [global] <要记住的稳定事实>\n");
+                        continue;
+                    }
+                    String scope = "project";
+                    String fact = payload;
+                    if (payload.regionMatches(true, 0, "global ", 0, 7)) {
+                        scope = "global";
+                        fact = payload.substring(7).trim();
+                    }
+                    if (fact.isBlank()) {
+                        System.out.println("记忆内容不可为空。\n");
+                        continue;
+                    }
+                    var saved = memoryManager.saveFact(fact, scope);
+                    System.out.println("已保存长期记忆: " + saved.id() + " [" + saved.scope() + "]\n");
+                    continue;
+                }
+                case MEMORY -> {
+                    String payload = parsed.payload() == null ? "" : parsed.payload().trim();
+                    String[] parts = payload.split("\\s+", 2);
+                    String action = parts.length == 0 ? "" : parts[0].toLowerCase();
+                    String argument = parts.length > 1 ? parts[1].trim() : "";
+                    switch (action) {
+                        case "list" -> memoryManager.listLongTerm().forEach(entry ->
+                                System.out.println(entry.id() + " [" + entry.scope() + "] " + entry.content()));
+                        case "search" -> {
+                            if (argument.isBlank()) System.out.println("用法: /memory search <关键词>");
+                            else memoryManager.searchLongTerm(argument, 20).forEach(entry ->
+                                    System.out.println(entry.id() + " [" + entry.scope() + "] " + entry.content()));
+                        }
+                        case "delete" -> System.out.println(argument.isBlank()
+                                ? "用法: /memory delete <id>"
+                                : (memoryManager.deleteLongTerm(argument) ? "已删除。" : "未找到该记忆。"));
+                        case "clear" -> System.out.println("已清空 "
+                                + memoryManager.clearProjectLongTerm() + " 条当前项目记忆；global 保留。");
+                        default -> System.out.println("用法: /memory list|search <关键词>|delete <id>|clear");
                     }
                     System.out.println();
                     continue;

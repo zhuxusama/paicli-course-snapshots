@@ -14,6 +14,8 @@ public final class CliCommandParser {
         UNKNOWN_COMMAND,   // 未识别的 /xxx → CLI 层直接报错
         CLEAR,             // /clear — 清空对话历史
         SWITCH_MODEL,      // /model [provider] — 切换模型
+        SAVE_MEMORY,       // /save [global] <内容> — 显式保存长期记忆
+        MEMORY,            // /memory list|search|delete|clear — 管理长期记忆
         EXIT               // /exit — 退出
     }
 
@@ -51,6 +53,22 @@ public final class CliCommandParser {
         if (trimmed.regionMatches(true, 0, modelPrefix + " ", 0, modelPrefix.length() + 1)) {
             return new ParsedCommand(CommandType.SWITCH_MODEL,
                     trimmed.substring(modelPrefix.length() + 1).trim());
+        }
+
+        // ---- /save [global] <内容> ----
+        if (trimmed.equalsIgnoreCase("/save")) {
+            return new ParsedCommand(CommandType.SAVE_MEMORY, "");
+        }
+        if (trimmed.regionMatches(true, 0, "/save ", 0, 6)) {
+            return new ParsedCommand(CommandType.SAVE_MEMORY, trimmed.substring(6).trim());
+        }
+
+        // ---- /memory list|search|delete|clear ----
+        if (trimmed.equalsIgnoreCase("/memory")) {
+            return new ParsedCommand(CommandType.MEMORY, "");
+        }
+        if (trimmed.regionMatches(true, 0, "/memory ", 0, 8)) {
+            return new ParsedCommand(CommandType.MEMORY, trimmed.substring(8).trim());
         }
 
         // ---- /xxx 未识别 → 直接拒绝 ----

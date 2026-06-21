@@ -42,6 +42,9 @@ public class PromptAssembler {
         append(prompt, repository.loadRequired(mode.resourcePath()));
         append(prompt, repository.loadRequired("approvals/" + ctx.approvalMode() + ".md"));
         append(prompt, repository.loadRequired("context/runtime.md"));
+        if (!ctx.memoryContext().isBlank()) {
+            append(prompt, ctx.memoryContext());
+        }
 
         String assembled = replaceVariables(prompt.toString(), variables).trim();
         if (!assembled.contains("## Language")) {

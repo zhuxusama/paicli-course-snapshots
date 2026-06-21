@@ -1,6 +1,8 @@
 package ouccs.smy.paiclilearn.agent;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import ouccs.smy.paiclilearn.memory.ExplicitMemoryHints;
+import ouccs.smy.paiclilearn.memory.MemoryManager;
 import ouccs.smy.paiclilearn.prompt.PromptAssembler;
 import ouccs.smy.paiclilearn.prompt.PromptContext;
 import ouccs.smy.paiclilearn.prompt.PromptMode;
@@ -30,6 +32,7 @@ public class Agent {
     private final ToolRegistry toolRegistry;
     private final PromptAssembler promptAssembler;
     private final PromptContext promptContext;
+    private final MemoryManager memoryManager;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
 
     /** [s05 新增] HITL 审批链；为 null 时副作用工具由 ToolRegistry 直接执行（无审批保护）。 */
@@ -58,6 +61,11 @@ public class Agent {
         this(llmClient, toolRegistry, PromptAssembler.createDefault(), PromptContext.empty());
     }
 
+    /** 生产入口：使用持久化 MemoryManager 和默认 prompt 组件。 */
+    public Agent(LlmClient llmClient, ToolRegistry toolRegistry, MemoryManager memoryManager) {
+        this(llmClient, toolRegistry, PromptAssembler.createDefault(), PromptContext.empty(), memoryManager);
+    }
+
     /**
      * 使用可注入的 prompt 组件构造 Agent，便于项目覆盖和确定性测试。
      *
@@ -68,19 +76,27 @@ public class Agent {
      */
     public Agent(LlmClient llmClient, ToolRegistry toolRegistry,
                  PromptAssembler promptAssembler, PromptContext promptContext) {
+        this(llmClient, toolRegistry, promptAssembler, promptContext, MemoryManager.inMemory());
+    }
+
+    /** 完整依赖注入构造器。 */
+    public Agent(LlmClient llmClient, ToolRegistry toolRegistry,
+                 PromptAssembler promptAssembler, PromptContext promptContext,
+                 MemoryManager memoryManager) {
         if (llmClient == null) {
             throw new IllegalArgumentException("llmClient 不可为空");
         }
         if (toolRegistry == null) {
             throw new IllegalArgumentException("toolRegistry 不可为空");
         }
-        if (promptAssembler == null || promptContext == null) {
-            throw new IllegalArgumentException("promptAssembler 和 promptContext 不可为空");
+        if (promptAssembler == null || promptContext == null || memoryManager == null) {
+            throw new IllegalArgumentException("prompt 和 memory 组件不可为空");
         }
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.promptAssembler = promptAssembler;
         this.promptContext = promptContext;
+        this.memoryManager = memoryManager;
         resetConversationHistory(buildSystemPrompt());
     }
 
@@ -117,7 +133,13 @@ public class Agent {
      * @throws IOException LLM 调用或工具执行中的 IO 异常
      */
     public String run(String userInput) throws IOException {
+        String explicitFact = ExplicitMemoryHints.extractFact(userInput);
+        if (explicitFact != null) {
+            memoryManager.saveFact(explicitFact, "project");
+        }
+        refreshSystemPrompt(userInput);
         conversationHistory.add(LlmClient.Message.user(userInput));
+        memoryManager.addUserMessage(userInput);
 
         StreamRenderer streamRenderer = new StreamRenderer();
 
@@ -146,12 +168,14 @@ public class Agent {
                 // 3. 追加 tool 结果消息
                 for (var result : results) {
                     conversationHistory.add(LlmClient.Message.tool(result.id(), result.result()));
+                    memoryManager.addToolResult(result.result());
                 }
 
                 streamRenderer.resetBetweenIterations();
             } else {
                 // ---- 最终回答分支 ----
                 conversationHistory.add(LlmClient.Message.assistant(response.content()));
+                memoryManager.addAssistantMessage(response.content());
                 streamRenderer.finish();
 
                 if (streamRenderer.hasStreamedOutput()) {
@@ -174,6 +198,7 @@ public class Agent {
      * 本章只清空对话消息；后续章节会把新增的会话状态纳入同一清理入口。</p>
      */
     public void clearHistory() {
+        memoryManager.clearShortTerm();
         resetConversationHistory(buildSystemPrompt());
     }
 
@@ -197,6 +222,13 @@ public class Agent {
     /** 组装当前 ReAct Agent 使用的完整 system prompt。 */
     private String buildSystemPrompt() {
         return promptAssembler.assemble(PromptMode.AGENT, promptContext);
+    }
+
+    private void refreshSystemPrompt(String query) {
+        String memoryContext = memoryManager.buildContextForQuery(query, 600);
+        String systemPrompt = promptAssembler.assemble(
+                PromptMode.AGENT, promptContext.withMemoryContext(memoryContext));
+        conversationHistory.set(0, LlmClient.Message.system(systemPrompt));
     }
 
     private static String formatUserFacingResponse(String reasoning, String content) {
