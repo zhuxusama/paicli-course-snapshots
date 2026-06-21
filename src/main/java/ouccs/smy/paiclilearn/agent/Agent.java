@@ -108,7 +108,7 @@ public class Agent {
 
                 // 3. 追加 tool 结果消息
                 for (var result : results) {
-                    conversationHistory.add(LlmClient.Message.tool(result.id(), result.output()));
+                    conversationHistory.add(LlmClient.Message.tool(result.id(), result.result()));
                 }
 
                 streamRenderer.resetBetweenIterations();

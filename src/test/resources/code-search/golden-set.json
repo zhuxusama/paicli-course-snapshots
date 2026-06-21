@@ -1,0 +1,26 @@
+[
+  {
+    "id": "agent-react-loop",
+    "question": "Agent 的 ReAct 循环 run 方法在哪个文件中？",
+    "pattern": "public String run(String userInput)",
+    "glob": "**/Agent.java",
+    "expectedPath": "src/main/java/ouccs/smy/paiclilearn/agent/Agent.java",
+    "expectedText": "public String run(String userInput)"
+  },
+  {
+    "id": "llm-client-interface",
+    "question": "LlmClient 接口定义了哪些核心方法？",
+    "pattern": "interface LlmClient",
+    "glob": "**/LlmClient.java",
+    "expectedPath": "src/main/java/ouccs/smy/paiclilearn/llm/LlmClient.java",
+    "expectedText": "public interface LlmClient"
+  },
+  {
+    "id": "grep-code-tool",
+    "question": "grep_code 工具的参数 schema 在哪里维护？",
+    "pattern": "grep_code",
+    "glob": "**/ToolRegistry.java",
+    "expectedPath": "src/main/java/ouccs/smy/paiclilearn/tool/ToolRegistry.java",
+    "expectedText": "\"grep_code\""
+  }
+]

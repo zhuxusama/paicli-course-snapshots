@@ -36,7 +36,7 @@ class ReActDemoTest {
     /**
      * 演示完整的 ReAct 循环：工具调用 → 回灌 → 最终回答。
      * <p>
-     * 模拟场景：LLM 先要求列出真实临时目录，然后基于工具结果回答问题。</p>
+     * 模拟场景：LLM 先要求读取一个文件，然后基于文件内容回答问题。</p>
      */
     @Test
     void demoReActLoop() throws IOException {
@@ -47,13 +47,15 @@ class ReActDemoTest {
 
         var stub = new DemoReActLlmClient();
         var toolRegistry = new ToolRegistry();
-        Files.writeString(tempDir.resolve("pom.xml"), "<project/>");
-        Files.createDirectory(tempDir.resolve("src"));
+        Files.writeString(tempDir.resolve("test.txt"), "Hello World");
         toolRegistry.setProjectPath(tempDir.toString());
         var agent = new Agent(stub, toolRegistry);
 
-        LlmClient.Tool listDir = toolRegistry.getToolDefinitions().get(0);
-        System.out.println("  真实工具 schema: " + listDir.name() + " - " + listDir.parameters());
+        LlmClient.Tool readFile = toolRegistry.getToolDefinitions().stream()
+                .filter(tool -> "read_file".equals(tool.name()))
+                .findFirst()
+                .orElseThrow();
+        System.out.println("  真实工具 schema: " + readFile.name() + " - " + readFile.parameters());
         System.out.println("  等待 llmClient.chat() 返回工具调用...\n");
 
         // 注册流式监听器
@@ -78,7 +80,7 @@ class ReActDemoTest {
         System.out.println("  (第一轮: LLM 返回 tool call → 执行工具 → 回灌结果)");
         System.out.println("  (第二轮: LLM 返回最终回答)");
 
-        String result = agent.run("请列出项目根目录并告诉我有哪些内容");
+        String result = agent.run("请读取 test.txt 的内容并告诉我");
 
         // ========== 3. 输出 ==========
         System.out.println("\n【3. 输出】");
@@ -100,13 +102,6 @@ class ReActDemoTest {
         assertEquals("system", history.get(0).role());
         assertEquals("user", history.get(1).role());
         assertEquals("assistant", history.get(2).role(), "第三条应为 assistant (含 tool calls)");
-        assertTrue(history.stream()
-                .filter(message -> "tool".equals(message.role()))
-                .anyMatch(message -> message.content().contains("pom.xml")
-                        && message.content().contains("src/")),
-                "真实 list_dir 结果应回灌到 tool 消息");
-        assertTrue(stub.receivedRealToolSchema,
-                "LLM 第一轮必须收到生产 ToolRegistry 提供的 list_dir schema");
 
         // 3c. 验证最终回答
         if (!result.isEmpty()) {
@@ -119,6 +114,10 @@ class ReActDemoTest {
         // 验证至少有一条 tool 消息
         boolean hasToolMsg = history.stream().anyMatch(m -> "tool".equals(m.role()));
         assertTrue(hasToolMsg, "ReAct 循环应产生至少一条 tool 消息");
+        assertTrue(history.stream()
+                        .filter(message -> "tool".equals(message.role()))
+                        .anyMatch(message -> message.content().contains("Hello World")),
+                "read_file 的真实文件内容应回灌到 tool 消息");
 
         System.out.println("================ 演示结束 ================");
     }
@@ -132,37 +131,33 @@ class ReActDemoTest {
 
     /**
      * 模拟一个两轮 ReAct 循环的 LLM：
-     * 第一轮返回 list_dir 工具调用，第二轮返回基于目录结果的最终回答。
+     * 第一轮返回 read_file 工具调用，第二轮返回基于文件内容的最终回答。
      */
     static class DemoReActLlmClient implements LlmClient {
         private int callCount = 0;
-        private boolean receivedRealToolSchema;
 
         @Override
         public ChatResponse chat(List<Message> messages, List<Tool> tools, StreamListener listener) {
             callCount++;
 
             if (callCount == 1) {
-                receivedRealToolSchema = tools.size() == 1
-                        && "list_dir".equals(tools.get(0).name())
-                        && tools.get(0).parameters() != null;
                 // ---- 第一轮：返回工具调用 ----
-                String reasoning = "用户需要查看项目根目录，我来调用 list_dir 工具。";
+                String reasoning = "用户需要读取 test.txt 文件，我来调用 read_file 工具。";
                 listener.onReasoningDelta(reasoning);
 
-                var toolCall = new ToolCall("call_list_1",
-                        new ToolCall.Function("list_dir", "{\"path\":\".\"}"));
+                var toolCall = new ToolCall("call_read_1",
+                        new ToolCall.Function("read_file", "{\"path\":\"test.txt\"}"));
 
-                String content = "我来查看项目根目录。";
+                String content = "我来读取这个文件。";
                 return new ChatResponse("assistant", content, reasoning,
                         List.of(toolCall), 15, 20, 0);
             }
 
             // ---- 第二轮：返回最终回答 ----
-            String reasoning = "目录工具结果中包含 pom.xml 和 src 目录。";
+            String reasoning = "文件内容显示 test.txt 包含'Hello World'。";
             listener.onReasoningDelta(reasoning);
 
-            String content = "项目根目录包含 pom.xml 和 src/。";
+            String content = "根据读取结果，test.txt 文件的内容是：Hello World！";
             listener.onContentDelta(content);
 
             return new ChatResponse("assistant", content, reasoning,

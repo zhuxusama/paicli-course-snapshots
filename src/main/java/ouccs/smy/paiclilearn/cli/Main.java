@@ -38,9 +38,10 @@ public class Main {
         LlmClient llmClient = LlmClientFactory.create(config);
         Agent agent = new Agent(llmClient);
 
-        System.out.println("PaiCLI 教学版 v3 (Chapter 03 - ReAct 循环与消息历史)");
+        System.out.println("PaiCLI 教学版 v4 (Chapter 04 - 只读文件工具)");
         System.out.println("Provider: " + llmClient.getProviderName());
         System.out.println("模型: " + llmClient.getModelName());
+        System.out.println("工具: read_file, list_dir, glob_files, grep_code");
         System.out.println("输入 'exit' 退出；输入 '/clear' 清空对话历史\n");
 
         Scanner scanner = new Scanner(System.in);
