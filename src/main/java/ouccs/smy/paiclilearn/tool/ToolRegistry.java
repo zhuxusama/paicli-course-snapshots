@@ -11,6 +11,7 @@ import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 工具注册中心——本章（s04）注册四个只读文件工具。
@@ -25,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 副作用工具（write_file、execute_command 等）在 s05 加入。
  * 并行执行、超时和 MCP 工具在后续章节加入。</p>
  *
- * @since s04（从 s03 的单一 list_dir 工具扩展而来）
+ * @since s04（从 s03 的空注册中心重构而来）
  */
 public class ToolRegistry {
 
@@ -42,14 +43,14 @@ public class ToolRegistry {
     public record ToolExecutionResult(
             String id, String name, String result,
             long elapsedMillis, boolean timedOut) {
-        static ToolExecutionResult completed(ToolInvocation inv, String result, long elapsed) {
+        public static ToolExecutionResult completed(ToolInvocation inv, String result, long elapsed) {
             return new ToolExecutionResult(inv.id(), inv.name(), result, elapsed, false);
         }
-        static ToolExecutionResult failed(ToolInvocation inv, String message, long elapsed) {
+        public static ToolExecutionResult failed(ToolInvocation inv, String message, long elapsed) {
             return new ToolExecutionResult(inv.id(), inv.name(),
                     "错误: " + message, elapsed, false);
         }
-        static ToolExecutionResult timedOut(ToolInvocation inv, long timeoutSeconds) {
+        public static ToolExecutionResult timedOut(ToolInvocation inv, long timeoutSeconds) {
             return new ToolExecutionResult(inv.id(), inv.name(),
                     "错误: 工具执行超时 (" + timeoutSeconds + "s)", 0, true);
         }
@@ -235,6 +236,98 @@ public class ToolRegistry {
                             parseInt(args.get("head_limit"), 3)
                     );
                     return formatGrepResult(searchEngine.search(req));
+                }
+        ));
+
+        // ========== [s05 新增] 副作用工具 ==========
+
+        // ---- write_file ----
+        tools.put("write_file", new Tool(
+                "write_file",
+                "将内容写入项目文件（覆盖已有内容）。需要 HITL 审批。",
+                createParameters(
+                        param("path", "string", "文件路径（相对于项目根）", true),
+                        param("content", "string", "要写入的文件内容", true)
+                ),
+                args -> {
+                    Path file = resolvePath(args.get("path"));
+                    String content = args.get("content");
+                    if (content == null) return "错误: content 参数必填";
+                    try {
+                        Files.createDirectories(file.getParent());
+                        Files.writeString(file, content);
+                        return "已写入 " + projectPath.relativize(file)
+                                + " (" + content.length() + " 字符)";
+                    } catch (IOException e) {
+                        return "错误: 写入文件失败: " + e.getMessage();
+                    }
+                }
+        ));
+
+        // ---- execute_command ----
+        tools.put("execute_command", new Tool(
+                "execute_command",
+                "在项目根目录执行 shell 命令。需要 HITL 审批。",
+                createParameters(
+                        param("command", "string", "要执行的命令", true),
+                        param("working_dir", "string", "工作目录（默认项目根）", false)
+                ),
+                args -> {
+                    String command = args.get("command");
+                    if (command == null || command.isBlank()) return "错误: command 参数必填";
+                    Path workDir = args.containsKey("working_dir")
+                            ? resolvePath(args.get("working_dir")) : projectPath;
+                    try {
+                        ProcessBuilder pb = new ProcessBuilder();
+                        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                            pb.command("cmd", "/c", command);
+                        } else {
+                            pb.command("sh", "-c", command);
+                        }
+                        pb.directory(workDir.toFile());
+                        pb.redirectErrorStream(true);
+                        Process process = pb.start();
+                        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                        boolean finished = process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS);
+                        if (!finished) {
+                            process.destroyForcibly();
+                            return "错误: 命令执行超时 (30s)\n" + output;
+                        }
+                        return "退出码: " + process.exitValue() + "\n" + output;
+                    } catch (Exception e) {
+                        return "错误: 命令执行失败: " + e.getMessage();
+                    }
+                }
+        ));
+
+        // ---- create_project ----
+        tools.put("create_project", new Tool(
+                "create_project",
+                "在项目根目录下创建新项目的目录结构和初始文件。需要 HITL 审批。",
+                createParameters(
+                        param("name", "string", "项目名称", true),
+                        param("type", "string", "项目类型 (java/python/go)，默认 java", false)
+                ),
+                args -> {
+                    String name = args.get("name");
+                    if (name == null || name.isBlank()) return "错误: name 参数必填";
+                    String type = args.getOrDefault("type", "java");
+                    Path projectDir = projectPath.resolve(name);
+                    try {
+                        Files.createDirectories(projectDir);
+                        if ("java".equals(type)) {
+                            Files.createDirectories(projectDir.resolve("src/main/java"));
+                            Files.createDirectories(projectDir.resolve("src/test/java"));
+                            Files.writeString(projectDir.resolve("pom.xml"),
+                                    "<?xml version=\"1.0\"?>\n<project>\n  <modelVersion>4.0.0</modelVersion>\n  <groupId>com.example</groupId>\n  <artifactId>" + name + "</artifactId>\n  <version>0.1.0</version>\n</project>\n");
+                        } else {
+                            Files.createDirectories(projectDir.resolve("src"));
+                            Files.writeString(projectDir.resolve("README.md"), "# " + name + "\n");
+                        }
+                        return "已创建项目: " + projectDir.toAbsolutePath();
+                    } catch (IOException e) {
+                        return "错误: 创建项目失败: " + e.getMessage();
+                    }
                 }
         ));
     }

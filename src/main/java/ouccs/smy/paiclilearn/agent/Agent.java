@@ -27,6 +27,9 @@ public class Agent {
     private final ToolRegistry toolRegistry;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
 
+    /** [s05 新增] HITL 审批链；为 null 时副作用工具由 ToolRegistry 直接执行（无审批保护）。 */
+    private ouccs.smy.paiclilearn.hitl.HitlToolRegistry hitlRegistry;
+
     /** 用户传入的流式输出监听器。不可为 null；默认为 NO_OP。 */
     private LlmClient.StreamListener userStreamListener = LlmClient.StreamListener.NO_OP;
 
@@ -59,6 +62,15 @@ public class Agent {
     }
 
     // ========== 对外接口 ==========
+
+    /**
+     * [s05 新增] 注入 HITL 审批链。
+     * <p>设置后，副作用工具（write_file/execute_command/create_project）
+     * 在 Agent 执行工具调用前经过 Policy → HITL 审批链。</p>
+     */
+    public void setHitlRegistry(ouccs.smy.paiclilearn.hitl.HitlToolRegistry hitlRegistry) {
+        this.hitlRegistry = hitlRegistry;
+    }
 
     /**
      * 设置用户侧流式监听器，用于展示 LLM 推理和内容的实时增量。
@@ -102,9 +114,11 @@ public class Agent {
                         response.toolCalls()
                 ));
 
-                // 2. 执行工具
+                // 2. 执行工具 [s05 修改] 优先走 HITL 审批链
                 var invocations = toolRegistry.convertToolCalls(response.toolCalls());
-                var results = toolRegistry.executeTools(invocations);
+                var results = hitlRegistry != null
+                        ? hitlRegistry.executeTools(invocations)
+                        : toolRegistry.executeTools(invocations);
 
                 // 3. 追加 tool 结果消息
                 for (var result : results) {

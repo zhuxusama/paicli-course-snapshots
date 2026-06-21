@@ -1,10 +1,13 @@
 package ouccs.smy.paiclilearn.cli;
 
 import ouccs.smy.paiclilearn.agent.Agent;
+import ouccs.smy.paiclilearn.hitl.HitlToolRegistry;
+import ouccs.smy.paiclilearn.hitl.TerminalHitlHandler;
 import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
+import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
 import java.util.Scanner;
 import org.slf4j.Logger;
@@ -36,12 +39,17 @@ public class Main {
         }
 
         LlmClient llmClient = LlmClientFactory.create(config);
-        Agent agent = new Agent(llmClient);
+        ToolRegistry toolRegistry = new ToolRegistry();
+        HitlToolRegistry hitlRegistry = new HitlToolRegistry(
+                toolRegistry, new TerminalHitlHandler(true));
+        Agent agent = new Agent(llmClient, toolRegistry);
+        agent.setHitlRegistry(hitlRegistry);  // [s05 新增] 注入 HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v4 (Chapter 04 - 只读文件工具)");
+        System.out.println("PaiCLI 教学版 v5 (Chapter 05 - HITL 审批 + 策略围栏 + 审计)");
         System.out.println("Provider: " + llmClient.getProviderName());
         System.out.println("模型: " + llmClient.getModelName());
-        System.out.println("工具: read_file, list_dir, glob_files, grep_code");
+        System.out.println("工具: read_file, list_dir, glob_files, grep_code, write_file, exec, create_project");
+        System.out.println("安全: PathGuard + CommandGuard + HITL 审批 (y/n/a/s)");
         System.out.println("输入 'exit' 退出；输入 '/clear' 清空对话历史\n");
 
         Scanner scanner = new Scanner(System.in);
