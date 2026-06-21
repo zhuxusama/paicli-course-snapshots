@@ -1,6 +1,9 @@
 package ouccs.smy.paiclilearn.agent;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import ouccs.smy.paiclilearn.prompt.PromptAssembler;
+import ouccs.smy.paiclilearn.prompt.PromptContext;
+import ouccs.smy.paiclilearn.prompt.PromptMode;
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
 import java.io.IOException;
@@ -16,7 +19,7 @@ import java.util.List;
  *   → 若返回 tool calls → 追加 assistant msg → 执行工具 → 追加 tool msg → 继续
  *   → 若返回 content   → 追加 assistant msg → 返回最终回答
  * </pre>
- * 后续章节会在这条稳定主链上逐步加入 prompt 分层、记忆、预算、扩展、渲染和取消能力。
+ * s07 已接入分层 prompt；后续章节继续加入记忆、预算、扩展、渲染和取消能力。
  * </p>
  *
  * @since s03
@@ -25,6 +28,8 @@ public class Agent {
 
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
+    private final PromptAssembler promptAssembler;
+    private final PromptContext promptContext;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
 
     /** [s05 新增] HITL 审批链；为 null 时副作用工具由 ToolRegistry 直接执行（无审批保护）。 */
@@ -47,18 +52,36 @@ public class Agent {
     /**
      * 完全构造 Agent。
      * @param llmClient   真实模型客户端，不可为 null
-     * @param toolRegistry 工具注册中心；s03 为空，后续章节逐步注入真实工具
+     * @param toolRegistry 工具注册中心；s03 起逐章增加真实工具
      */
     public Agent(LlmClient llmClient, ToolRegistry toolRegistry) {
+        this(llmClient, toolRegistry, PromptAssembler.createDefault(), PromptContext.empty());
+    }
+
+    /**
+     * 使用可注入的 prompt 组件构造 Agent，便于项目覆盖和确定性测试。
+     *
+     * @param llmClient 真实模型客户端
+     * @param toolRegistry 工具注册中心
+     * @param promptAssembler 分层 prompt 组装器
+     * @param promptContext 当前运行时 prompt 上下文
+     */
+    public Agent(LlmClient llmClient, ToolRegistry toolRegistry,
+                 PromptAssembler promptAssembler, PromptContext promptContext) {
         if (llmClient == null) {
             throw new IllegalArgumentException("llmClient 不可为空");
         }
         if (toolRegistry == null) {
             throw new IllegalArgumentException("toolRegistry 不可为空");
         }
+        if (promptAssembler == null || promptContext == null) {
+            throw new IllegalArgumentException("promptAssembler 和 promptContext 不可为空");
+        }
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
-        resetConversationHistory("你是一个有用的 AI 助手。请根据用户的问题给出准确的回答。");
+        this.promptAssembler = promptAssembler;
+        this.promptContext = promptContext;
+        resetConversationHistory(buildSystemPrompt());
     }
 
     // ========== 对外接口 ==========
@@ -151,7 +174,7 @@ public class Agent {
      * 本章只清空对话消息；后续章节会把新增的会话状态纳入同一清理入口。</p>
      */
     public void clearHistory() {
-        resetConversationHistory("你是一个有用的 AI 助手。请根据用户的问题给出准确的回答。");
+        resetConversationHistory(buildSystemPrompt());
     }
 
     /**
@@ -169,6 +192,11 @@ public class Agent {
     private void resetConversationHistory(String systemContent) {
         conversationHistory.clear();
         conversationHistory.add(LlmClient.Message.system(systemContent));
+    }
+
+    /** 组装当前 ReAct Agent 使用的完整 system prompt。 */
+    private String buildSystemPrompt() {
+        return promptAssembler.assemble(PromptMode.AGENT, promptContext);
     }
 
     private static String formatUserFacingResponse(String reasoning, String content) {

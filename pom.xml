@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s06 Slash 命令与配置</description>
+    <description>PaiCLI 渐进式构建课程 - s07 Prompt 分层与运行时上下文</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
