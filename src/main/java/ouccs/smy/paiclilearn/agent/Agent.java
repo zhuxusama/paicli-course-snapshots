@@ -2,7 +2,12 @@ package ouccs.smy.paiclilearn.agent;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.memory.ExplicitMemoryHints;
+import ouccs.smy.paiclilearn.context.ContextProfile;
+import ouccs.smy.paiclilearn.context.TokenUsageFormatter;
+import ouccs.smy.paiclilearn.memory.ConversationHistoryCompactor;
+import ouccs.smy.paiclilearn.memory.ConversationMemory;
 import ouccs.smy.paiclilearn.memory.MemoryManager;
+import ouccs.smy.paiclilearn.memory.TokenBudget;
 import ouccs.smy.paiclilearn.prompt.PromptAssembler;
 import ouccs.smy.paiclilearn.prompt.PromptContext;
 import ouccs.smy.paiclilearn.prompt.PromptMode;
@@ -33,6 +38,11 @@ public class Agent {
     private final PromptAssembler promptAssembler;
     private final PromptContext promptContext;
     private final MemoryManager memoryManager;
+    // [s09 新增] Token 预算、压缩器、配置画像
+    private TokenBudget tokenBudget;
+    private ContextProfile contextProfile;
+    private ConversationHistoryCompactor compactor;
+    private long startNanos;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
 
     /** [s05 新增] HITL 审批链；为 null 时副作用工具由 ToolRegistry 直接执行（无审批保护）。 */
@@ -97,6 +107,11 @@ public class Agent {
         this.promptAssembler = promptAssembler;
         this.promptContext = promptContext;
         this.memoryManager = memoryManager;
+        // [s09 新增] 初始化 Token 预算和压缩器
+        this.contextProfile = ContextProfile.from(llmClient);
+        this.tokenBudget = new TokenBudget(contextProfile.maxContextWindow());
+        this.compactor = new ConversationHistoryCompactor(llmClient);
+        this.startNanos = System.nanoTime();
         resetConversationHistory(buildSystemPrompt());
     }
 
@@ -144,11 +159,23 @@ public class Agent {
         StreamRenderer streamRenderer = new StreamRenderer();
 
         for (int i = 0; i < MAX_ITERATIONS; i++) {
+            // [s09 新增] Token 压缩检查
+            if (tokenBudget.needsCompression(memoryManager.getConversationMemory(), 0.90)) {
+                compactor.compactIfNeeded(conversationHistory,
+                        contextProfile.compressionTriggerTokens());
+            }
+
             var response = llmClient.chat(
                     conversationHistory,
                     toolRegistry.getToolDefinitions(),
                     streamRenderer
             );
+
+            // [s09 新增] 记录 Token 消耗并展示统计
+            tokenBudget.recordUsage(response.inputTokens(), response.outputTokens(),
+                    response.cachedInputTokens());
+            System.out.println(TokenUsageFormatter.format(llmClient, tokenBudget,
+                    contextProfile, startNanos));
 
             if (response.hasToolCalls()) {
                 // ---- 工具调用分支 ----
