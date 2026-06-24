@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** 统一短期记录、显式长期保存、检索和管理操作。 */
+/** [s08 新增] */
 public class MemoryManager {
     private final ConversationMemory shortTerm;
     private final LongTermMemory longTerm;
@@ -47,6 +48,8 @@ public class MemoryManager {
     public boolean deleteLongTerm(String id) { return longTerm.delete(id); }
     public int clearProjectLongTerm() { return longTerm.clearProject(projectKey); }
     public void clearShortTerm() { shortTerm.clear(); }
+    /** [s09 新增] 获取短期记忆，供 Token 预算和压缩器使用。 */
+    public ConversationMemory getConversationMemory() { return shortTerm; }
     public int shortTermSize() { return shortTerm.size(); }
     public String projectKey() { return projectKey; }
 

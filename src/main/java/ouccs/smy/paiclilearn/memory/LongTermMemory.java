@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.*;
 
 /** JSON 持久化长期事实，支持项目/global 可见性和可审计删除。 */
+/** [s08 新增] */
 public class LongTermMemory implements Memory {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final LinkedHashMap<String, MemoryEntry> entries = new LinkedHashMap<>();

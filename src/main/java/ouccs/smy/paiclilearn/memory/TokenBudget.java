@@ -11,6 +11,7 @@ import java.util.List;
  *
  * @since s09
  */
+/** [s09 新增] */
 public class TokenBudget {
     private final int contextWindow;
     private final int reservedForSystem;

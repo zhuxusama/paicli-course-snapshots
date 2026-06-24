@@ -21,6 +21,7 @@ import java.util.List;
  *
  * @since s09
  */
+/** [s09 新增] */
 public class ConversationHistoryCompactor {
     private final LlmClient llmClient;
     private final int retainRecentRounds;

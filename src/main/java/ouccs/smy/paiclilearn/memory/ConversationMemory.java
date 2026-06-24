@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Optional;
 
 /** 当前会话的有界短期记忆；s09 再用 token 预算和摘要替代条目数边界。 */
+/** [s08 新增] */
 public class ConversationMemory implements Memory {
     private final LinkedHashMap<String, MemoryEntry> entries = new LinkedHashMap<>();
     private final int maxEntries;

@@ -15,6 +15,7 @@ import java.util.UUID;
  * @param projectKey project scope 所属项目
  * @param tokenCount 近似 token 数
  */
+/** [s08 新增] */
 public record MemoryEntry(String id, String content, MemoryType type, Instant timestamp,
                           String scope, String projectKey, int tokenCount) {
     /** 本章实际保存的四类记忆。 */

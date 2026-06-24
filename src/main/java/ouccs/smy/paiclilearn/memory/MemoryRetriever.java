@@ -3,6 +3,7 @@ package ouccs.smy.paiclilearn.memory;
 import java.util.*;
 
 /** 合并短期与长期记忆，并用可解释关键词相关性排序。 */
+/** [s08 新增] */
 public class MemoryRetriever {
     private final ConversationMemory shortTerm;
     private final LongTermMemory longTerm;
