@@ -14,7 +14,9 @@ import java.util.Map;
  * @since s10
  */
 public class Task {
+    /** 任务类型——PLANNING/FILE_READ/FILE_WRITE/COMMAND/ANALYSIS/VERIFICATION。 @since s10 */
     public enum TaskType { PLANNING, FILE_READ, FILE_WRITE, COMMAND, ANALYSIS, VERIFICATION }
+    /** 任务状态机——PENDING→RUNNING→COMPLETED/FAILED/SKIPPED。 @since s10 */
     public enum TaskStatus { PENDING, RUNNING, COMPLETED, FAILED, SKIPPED }
 
     private final String id;

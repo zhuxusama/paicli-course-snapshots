@@ -16,6 +16,7 @@ import java.util.*;
  *
  * @since s10
  */
+/** [s10 新增] */
 public class Planner {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final LlmClient llmClient;

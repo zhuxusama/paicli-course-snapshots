@@ -13,6 +13,7 @@ import java.util.stream.Collectors;
  * @since s10
  */
 public class ExecutionPlan {
+    /** 计划状态机——CREATED→RUNNING→COMPLETED/FAILED/CANCELLED。 @since s10 */
     public enum PlanStatus { CREATED, RUNNING, COMPLETED, FAILED, CANCELLED }
 
     private final String id;
