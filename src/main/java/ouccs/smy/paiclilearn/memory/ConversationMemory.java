@@ -31,4 +31,22 @@ public class ConversationMemory implements Memory {
     @Override public boolean delete(String id) { return entries.remove(id) != null; }
     @Override public void clear() { entries.clear(); }
     @Override public int size() { return entries.size(); }
+
+    /** [s09 新增] 估算当前所有条目的 token 总数，供压缩触发判断。 */
+    public int getTokenCount() {
+        return entries.values().stream().mapToInt(MemoryEntry::tokenCount).sum();
+    }
+
+    /** [s09 新增] 动态调整条目数上限，用于 context profile 切换。 */
+    public void setMaxTokens(int maxTokens) {
+        // 简化：用条目数近似 token 上限
+        while (entries.size() > 0 && getTokenCount() > maxTokens) {
+            entries.remove(entries.keySet().iterator().next());
+        }
+    }
+
+    /** [s09 新增] 状态摘要。 */
+    public String getStatusSummary() {
+        return "短期记忆: " + entries.size() + " 条, ~" + getTokenCount() + " tokens";
+    }
 }

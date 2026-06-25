@@ -64,6 +64,11 @@ public class LongTermMemory implements Memory {
     @Override public synchronized void clear() { entries.clear(); persist(); }
     @Override public synchronized int size() { return entries.size(); }
 
+    /** [s09 新增] 状态摘要。 */
+    public String getStatusSummary() {
+        return "长期记忆: " + entries.size() + " 条";
+    }
+
     public synchronized List<MemoryEntry> visibleIn(String projectKey) {
         return entries.values().stream().filter(e -> isVisible(e, projectKey)).toList();
     }

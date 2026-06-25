@@ -15,9 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class MemoryManagerTest {
     @Test void injectsRelevantFactAndClearKeepsLongTerm() throws Exception {
         var longTerm = LongTermMemory.inMemory();
-        var manager = new MemoryManager(longTerm, ".");
-        manager.saveFact("项目使用 Java 17", "project");
         var client = new CapturingClient();
+        var manager = new MemoryManager(client, longTerm, ".");
+        manager.saveFact("项目使用 Java 17", "project");
+
         var agent = new Agent(client, new ToolRegistry(), PromptAssembler.createDefault(),
                 PromptContext.empty(), manager);
 
@@ -31,8 +32,8 @@ class MemoryManagerTest {
     }
 
     @Test void injectsRelevantShortTermMessageIntoCurrentPrompt() throws Exception {
-        var manager = MemoryManager.inMemory();
         var client = new CapturingClient();
+        var manager = MemoryManager.inMemory(client);
         var agent = new Agent(client, new ToolRegistry(), PromptAssembler.createDefault(),
                 PromptContext.empty(), manager);
 

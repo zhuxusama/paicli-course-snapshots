@@ -5,118 +5,162 @@ import ouccs.smy.paiclilearn.llm.LlmClient;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /**
- * 压缩 ConversationMemory 中的旧短期记忆，并保留最近几条原始记忆。
+ * 上下文压缩器——当短期记忆条目过多时，用 MAP-REDUCE 策略压缩旧条目。
  *
- * <p>它和 {@link ConversationHistoryCompactor} 的边界不同：本类处理 PaiCLI
- * 自己维护的短期记忆条目；ConversationHistoryCompactor 处理即将发送给 LLM 的消息历史。</p>
+ * <p>压缩策略：
+ * <ol>
+ *   <li>MAP 阶段：将旧条目每 5 条一组分片，每组调 LLM 生成片段摘要。</li>
+ *   <li>REDUCE 阶段：多个片段摘要再次调 LLM 合并成一个最终摘要。</li>
+ *   <li>保留最近 N 条原始条目不压缩（默认 3 条）。</li>
+ *   <li>LLM 调用失败时自动降级为文本截断。</li>
+ * </ol>
+ *
+ * <p>由 {@link MemoryManager} 在每次消息写入后自动调用 {@link #compress(ConversationMemory)}，
+ * 触发条件由 {@link TokenBudget#needsCompression(ConversationMemory, double)} 控制。</p>
+ *
+ * @since s09
  */
-/** [s09 新增] */
 public class ContextCompressor {
-    private static final int CHUNK_SIZE = 5;
+    private LlmClient llmClient;
+    private final int retainRecentRounds;
 
     private static final String MAP_PROMPT = """
-            请将下面这段旧对话记忆压缩成一段中文摘要，保留：
-            - 用户需求和意图
+            请将以下对话片段压缩成一段简洁的摘要，保留关键信息：
+            - 用户的需求和意图
             - 已执行的操作和结果
-            - 已确认的技术决策
-            - 后续仍需要使用的关键信息
+            - 做出的决策和结论
+            - 重要的技术细节
 
-            旧对话记忆：
+            对话片段：
             %s
 
-            请控制在 200 字以内。
+            请用中文输出摘要，控制在200字以内。
             """;
 
     private static final String REDUCE_PROMPT = """
-            请将下面多个片段摘要合并成一段整体摘要，去重但不要丢失关键事实。
+            请将以下多个摘要合并成一个整体摘要，保留所有关键信息。
 
-            片段摘要：
+            各片段摘要：
             %s
 
-            请控制在 300 字以内。
+            请用中文输出合并摘要，控制在300字以内。
             """;
 
-    private final LlmClient llmClient;
-    private final int retainRecentEntries;
 
-    public ContextCompressor(LlmClient llmClient) {
-        this(llmClient, 6);
+
+    /** [s09 新增] 设置 LLM 客户端，用于模型热切换时更新。 */
+    public void setLlmClient(LlmClient llmClient) {
+        this.llmClient = llmClient;
     }
 
-    public ContextCompressor(LlmClient llmClient, int retainRecentEntries) {
-        this.llmClient = Objects.requireNonNull(llmClient, "llmClient");
-        if (retainRecentEntries < 1) throw new IllegalArgumentException("retainRecentEntries 必须 > 0");
-        this.retainRecentEntries = retainRecentEntries;
+    public ContextCompressor(LlmClient llmClient) {
+        this(llmClient, 3);
     }
 
     /**
-     * 将短期记忆中较旧的条目压成 SUMMARY，并把最近的原始条目放回 memory。
-     *
-     * @return 实际写回 memory 的摘要；条目不足或 LLM 返回空内容时返回 null
+     * @param llmClient          LLM 客户端
+     * @param retainRecentRounds 保留最近 N 条完整条目不压缩
      */
-    public String compress(ConversationMemory memory, String projectKey) throws IOException {
-        Objects.requireNonNull(memory, "memory");
-        List<MemoryEntry> all = memory.getAll();
-        if (all.size() <= retainRecentEntries) {
+    public ContextCompressor(LlmClient llmClient, int retainRecentRounds) {
+        this.llmClient = llmClient;
+        this.retainRecentRounds = retainRecentRounds;
+    }
+
+    /**
+     * 压缩对话记忆——将旧条目 MAP-REDUCE 为摘要，保留最近条目。
+     *
+     * @param memory 短期记忆
+     * @return 压缩后的摘要文本；如果条目不足或 LLM 全部失败则返回 null
+     */
+    public String compress(ConversationMemory memory) {
+        List<MemoryEntry> allEntries = memory.getAll();
+        if (allEntries.size() <= retainRecentRounds) {
             return null;
         }
 
-        int split = all.size() - retainRecentEntries;
-        List<MemoryEntry> oldEntries = new ArrayList<>(all.subList(0, split));
-        List<MemoryEntry> recentEntries = new ArrayList<>(all.subList(split, all.size()));
+        int splitPoint = allEntries.size() - retainRecentRounds;
+        List<MemoryEntry> oldEntries = new ArrayList<>(allEntries.subList(0, splitPoint));
+        List<MemoryEntry> recentEntries = new ArrayList<>(allEntries.subList(splitPoint, allEntries.size()));
 
-        List<String> summaries = map(oldEntries);
-        if (summaries.isEmpty()) {
+        List<String> chunkSummaries = mapPhase(oldEntries);
+        if (chunkSummaries.isEmpty()) {
             return null;
         }
 
-        String summary = summaries.size() == 1 ? summaries.get(0) : reduce(summaries);
-        if (summary == null || summary.isBlank()) {
-            return null;
+        String finalSummary;
+        if (chunkSummaries.size() == 1) {
+            finalSummary = chunkSummaries.get(0);
+        } else {
+            finalSummary = reducePhase(chunkSummaries);
         }
 
         memory.clear();
-        memory.store(MemoryEntry.summary("[历史对话摘要] " + summary.trim(), projectKey));
+        MemoryEntry summaryEntry = MemoryEntry.summary(
+                "[历史对话摘要] " + finalSummary, ".");
+        memory.store(summaryEntry);
+
         for (MemoryEntry entry : recentEntries) {
             memory.store(entry);
         }
-        return summary.trim();
+
+        return finalSummary;
     }
 
-    private List<String> map(List<MemoryEntry> entries) throws IOException {
+    // ---- MAP-REDUCE 内部实现 ----
+
+    private List<String> mapPhase(List<MemoryEntry> oldEntries) {
         List<String> summaries = new ArrayList<>();
-        for (int start = 0; start < entries.size(); start += CHUNK_SIZE) {
-            int end = Math.min(start + CHUNK_SIZE, entries.size());
-            String chunk = render(entries.subList(start, end));
-            String summary = ask(String.format(MAP_PROMPT, chunk), "你是对话记忆压缩助手。");
-            if (summary != null && !summary.isBlank()) {
-                summaries.add(summary.trim());
+        int chunkSize = 5;
+        List<List<MemoryEntry>> chunks = partition(oldEntries, chunkSize);
+
+        for (List<MemoryEntry> chunk : chunks) {
+            StringBuilder chunkText = new StringBuilder();
+            for (MemoryEntry entry : chunk) {
+                chunkText.append(entry.type()).append(": ")
+                        .append(entry.content()).append("\n\n");
+            }
+
+            try {
+                String prompt = String.format(MAP_PROMPT, chunkText);
+                LlmClient.ChatResponse response = llmClient.chat(List.of(
+                        LlmClient.Message.system("你是一个对话摘要助手。"),
+                        LlmClient.Message.user(prompt)
+                ), null);
+                summaries.add(response.content());
+            } catch (IOException e) {
+                System.err.println("⚠️ 摘要生成失败: " + e.getMessage());
+                // 降级：直接截取前 200 字
+                String fallback = chunkText.substring(0, Math.min(200, chunkText.length()));
+                summaries.add("[压缩] " + fallback);
             }
         }
+
         return summaries;
     }
 
-    private String reduce(List<String> summaries) throws IOException {
+    private String reducePhase(List<String> summaries) {
         String joined = String.join("\n\n---\n\n", summaries);
-        return ask(String.format(REDUCE_PROMPT, joined), "你是摘要合并助手。");
-    }
 
-    private String ask(String prompt, String systemPrompt) throws IOException {
-        var response = llmClient.chat(List.of(
-                LlmClient.Message.system(systemPrompt),
-                LlmClient.Message.user(prompt)
-        ), null);
-        return response.content();
-    }
-
-    private String render(List<MemoryEntry> entries) {
-        StringBuilder out = new StringBuilder();
-        for (MemoryEntry entry : entries) {
-            out.append(entry.type()).append(": ").append(entry.content()).append("\n\n");
+        try {
+            String prompt = String.format(REDUCE_PROMPT, joined);
+            LlmClient.ChatResponse response = llmClient.chat(List.of(
+                    LlmClient.Message.system("你是一个摘要合并助手。"),
+                    LlmClient.Message.user(prompt)
+            ), null);
+            return response.content();
+        } catch (IOException e) {
+            System.err.println("⚠️ 摘要合并失败: " + e.getMessage());
+            return String.join("；", summaries);
         }
-        return out.toString();
+    }
+
+    private <T> List<List<T>> partition(List<T> list, int size) {
+        List<List<T>> partitions = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size) {
+            partitions.add(list.subList(i, Math.min(i + size, list.size())));
+        }
+        return partitions;
     }
 }

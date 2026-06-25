@@ -18,7 +18,7 @@ class ContextCompressorTest {
         var client = new CountingLlmClient("摘要");
         var compressor = new ContextCompressor(client, 3);
 
-        assertNull(compressor.compress(memory, "p"));
+        assertNull(compressor.compress(memory));
         assertEquals(0, client.calls);
         assertEquals(2, memory.size());
     }
@@ -31,7 +31,7 @@ class ContextCompressorTest {
 
         var client = new CountingLlmClient("用户确认使用真实 LLM 客户端");
         var compressor = new ContextCompressor(client, 3);
-        String summary = compressor.compress(memory, "p");
+        String summary = compressor.compress(memory);
 
         assertEquals("用户确认使用真实 LLM 客户端", summary);
         assertEquals(1, client.calls);
@@ -56,7 +56,7 @@ class ContextCompressorTest {
                                            StreamListener listener) throws IOException {
             calls++;
             assertEquals("system", messages.get(0).role());
-            assertTrue(messages.get(1).content().contains("旧对话记忆"));
+            assertTrue(messages.get(1).content().contains("对话片段"));
             return new ChatResponse("assistant", response, null, null, 0, 0, 0);
         }
 
