@@ -86,7 +86,7 @@ public class Agent {
      */
     public Agent(LlmClient llmClient, ToolRegistry toolRegistry,
                  PromptAssembler promptAssembler, PromptContext promptContext) {
-        this(llmClient, toolRegistry, promptAssembler, promptContext, MemoryManager.inMemory());
+        this(llmClient, toolRegistry, promptAssembler, promptContext, MemoryManager.inMemory(llmClient));
     }
 
     /** 完整依赖注入构造器。 */

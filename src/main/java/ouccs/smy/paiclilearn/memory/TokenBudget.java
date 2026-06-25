@@ -11,6 +11,7 @@ import java.util.List;
  *
  * @since s09
  */
+/** [s09 新增] */
 public class TokenBudget {
     private final int contextWindow;
     private final int reservedForSystem;
@@ -96,4 +97,11 @@ public class TokenBudget {
     public int totalCachedInputTokens() { return totalCachedInputTokens; }
     public int llmCallCount() { return llmCallCount; }
     public void reset() { totalInputTokens = totalOutputTokens = totalCachedInputTokens = 0; llmCallCount = 0; }
+
+    /** [s09 新增] 用量报告，供 getSystemStatus 使用。 */
+    public String getUsageReport() {
+        return "Token 用量: 输入=" + totalInputTokens + " 输出=" + totalOutputTokens
+                + " 缓存=" + totalCachedInputTokens + " 调用=" + llmCallCount + " 次"
+                + " (窗口=" + contextWindow + ")";
+    }
 }

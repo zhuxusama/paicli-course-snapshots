@@ -43,7 +43,7 @@ public class Main {
         ToolRegistry toolRegistry = new ToolRegistry();
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
-        MemoryManager memoryManager = MemoryManager.createDefault(toolRegistry.getProjectPath().toString());
+        MemoryManager memoryManager = MemoryManager.createDefault(llmClient, toolRegistry.getProjectPath().toString());
         Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 

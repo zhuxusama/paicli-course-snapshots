@@ -15,9 +15,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class MemoryManagerTest {
     @Test void injectsRelevantFactAndClearKeepsLongTerm() throws Exception {
         var longTerm = LongTermMemory.inMemory();
-        var manager = new MemoryManager(longTerm, ".");
-        manager.saveFact("项目使用 Java 17", "project");
         var client = new CapturingClient();
+        var manager = new MemoryManager(client, longTerm, ".");
+        manager.saveFact("项目使用 Java 17", "project");
+
         var agent = new Agent(client, new ToolRegistry(), PromptAssembler.createDefault(),
                 PromptContext.empty(), manager);
 
@@ -28,6 +29,18 @@ class MemoryManagerTest {
         agent.clearHistory();
         assertEquals(0, manager.shortTermSize());
         assertEquals(1, manager.listLongTerm().size());
+    }
+
+    @Test void injectsRelevantShortTermMessageIntoCurrentPrompt() throws Exception {
+        var client = new CapturingClient();
+        var manager = MemoryManager.inMemory(client);
+        var agent = new Agent(client, new ToolRegistry(), PromptAssembler.createDefault(),
+                PromptContext.empty(), manager);
+
+        agent.run("请记住，本轮任务重点是修复短期记忆检索");
+        agent.run("本轮任务重点是什么？");
+
+        assertTrue(client.systemPrompt.contains("修复短期记忆检索"));
     }
 
     private static final class CapturingClient implements LlmClient {
