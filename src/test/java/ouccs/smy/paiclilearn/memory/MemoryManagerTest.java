@@ -30,6 +30,18 @@ class MemoryManagerTest {
         assertEquals(1, manager.listLongTerm().size());
     }
 
+    @Test void injectsRelevantShortTermMessageIntoCurrentPrompt() throws Exception {
+        var manager = MemoryManager.inMemory();
+        var client = new CapturingClient();
+        var agent = new Agent(client, new ToolRegistry(), PromptAssembler.createDefault(),
+                PromptContext.empty(), manager);
+
+        agent.run("请记住，本轮任务重点是修复短期记忆检索");
+        agent.run("本轮任务重点是什么？");
+
+        assertTrue(client.systemPrompt.contains("修复短期记忆检索"));
+    }
+
     private static final class CapturingClient implements LlmClient {
         String systemPrompt;
         @Override public ChatResponse chat(List<Message> messages, List<Tool> tools, StreamListener listener) {

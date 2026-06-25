@@ -19,4 +19,17 @@ class MemoryRetrieverTest {
         assertFalse(context.contains("Python"));
         assertEquals("", retriever.buildLongTermContext("Java", "A", 1));
     }
+
+    @Test void buildsContextFromShortTermAndLongTermTogether() {
+        var shortTerm = new ConversationMemory(10);
+        var longTerm = LongTermMemory.inMemory();
+        shortTerm.store(MemoryEntry.message("用户刚刚说本轮调试重点是短期记忆", MemoryEntry.MemoryType.USER, "A"));
+        longTerm.store(MemoryEntry.fact("项目长期要求使用 Java 17", "project", "A"));
+        var retriever = new MemoryRetriever(shortTerm, longTerm);
+
+        String context = retriever.buildContextForQuery("短期记忆 Java", "A", 200);
+
+        assertTrue(context.contains("本轮调试重点是短期记忆"));
+        assertTrue(context.contains("项目长期要求使用 Java 17"));
+    }
 }

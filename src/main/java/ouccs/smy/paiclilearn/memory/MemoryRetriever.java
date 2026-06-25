@@ -3,6 +3,7 @@ package ouccs.smy.paiclilearn.memory;
 import java.util.*;
 
 /** 合并短期与长期记忆，并用可解释关键词相关性排序。 */
+/** [s08 新增] */
 public class MemoryRetriever {
     private final ConversationMemory shortTerm;
     private final LongTermMemory longTerm;
@@ -44,6 +45,19 @@ public class MemoryRetriever {
             context.append("- [").append(candidate.entry().scope()).append("] ")
                     .append(candidate.entry().content()).append('\n');
             used += candidate.entry().tokenCount();
+        }
+        return context.toString().trim();
+    }
+
+    public String buildContextForQuery(String query, String projectKey, int maxTokens) {
+        List<MemoryEntry> entries = retrieve(query, projectKey, 8, maxTokens);
+        if (entries.isEmpty()) return "";
+        StringBuilder context = new StringBuilder("## 相关记忆\n\n");
+        for (MemoryEntry entry : entries) {
+            // 这里把短期会话和长期事实统一交给 prompt 层，让 Agent 当前轮真正使用刚发生的上下文。
+            String source = entry.type() == MemoryEntry.MemoryType.FACT ? entry.scope() : "short-term";
+            context.append("- [").append(source).append("] ")
+                    .append(entry.content()).append('\n');
         }
         return context.toString().trim();
     }

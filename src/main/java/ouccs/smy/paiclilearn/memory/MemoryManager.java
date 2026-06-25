@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Objects;
 
 /** 统一短期记录、显式长期保存、检索和管理操作。 */
+/** [s08 新增] */
 public class MemoryManager {
     private final ConversationMemory shortTerm;
     private final LongTermMemory longTerm;
@@ -37,7 +38,8 @@ public class MemoryManager {
     }
 
     public String buildContextForQuery(String query, int maxTokens) {
-        return retriever.buildLongTermContext(query, projectKey, maxTokens);
+        // prompt 注入必须走短期+长期合并检索，否则 Agent 刚说过的话不会进入当前轮上下文。
+        return retriever.buildContextForQuery(query, projectKey, maxTokens);
     }
 
     public List<MemoryEntry> listLongTerm() { return longTerm.visibleIn(projectKey); }
