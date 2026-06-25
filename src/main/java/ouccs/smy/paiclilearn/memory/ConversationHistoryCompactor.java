@@ -48,17 +48,20 @@ public class ConversationHistoryCompactor {
 
         // 找到可以压缩的用户消息边界
         int compressEnd = findCompressBoundary(history);
-        if (compressEnd < 3) return false; // 保留 system + 至少 1 轮
+        if (compressEnd < 3) return false;
 
-        // 提取待压缩的消息（保留 system）
-        List<LlmClient.Message> toCompress = new ArrayList<>(history.subList(1, compressEnd));
+        LlmClient.Message system = "system".equals(history.get(0).role()) ? history.get(0) : null;
+        int compressStart = system == null ? 0 : 1;
+        // 只压缩 system 之后、切点之前的旧消息；system 必须原样放回第一位。
+        List<LlmClient.Message> toCompress = new ArrayList<>(history.subList(compressStart, compressEnd));
         List<LlmClient.Message> tail = new ArrayList<>(history.subList(compressEnd, history.size()));
+        if (toCompress.isEmpty()) return false;
 
         try {
             String summary = summarize(toCompress);
+            if (summary == null || summary.isBlank()) return false;
             history.clear();
-            // system 消息
-            history.add(toCompress.get(0)); // 实际上 system 在 index 0
+            if (system != null) history.add(system);
             history.add(LlmClient.Message.user("[已压缩] " + summary));
             // 尾部 + 辅助确认
             history.add(LlmClient.Message.assistant("好的，已理解前面的对话摘要。"));

@@ -18,8 +18,8 @@ import java.util.UUID;
 /** [s08 新增] */
 public record MemoryEntry(String id, String content, MemoryType type, Instant timestamp,
                           String scope, String projectKey, int tokenCount) {
-    /** 本章实际保存的四类记忆。 */
-    public enum MemoryType { USER, ASSISTANT, TOOL, FACT }
+    /** 本阶段实际保存的记忆类型；s09 增加 SUMMARY 承载压缩后的短期记忆。 */
+    public enum MemoryType { USER, ASSISTANT, TOOL, FACT, SUMMARY }
 
     public MemoryEntry {
         if (id == null || id.isBlank()) throw new IllegalArgumentException("记忆 id 不可为空");
@@ -43,6 +43,11 @@ public record MemoryEntry(String id, String content, MemoryType type, Instant ti
         return new MemoryEntry(UUID.randomUUID().toString(), content, MemoryType.FACT,
                 Instant.now(), scope, "global".equalsIgnoreCase(scope) ? "" : projectKey,
                 estimateTokens(content));
+    }
+
+    public static MemoryEntry summary(String content, String projectKey) {
+        return new MemoryEntry("summary-" + UUID.randomUUID(), content, MemoryType.SUMMARY,
+                Instant.now(), "project", projectKey, estimateTokens(content));
     }
 
     /** 使用字符比例给出可解释的近似 token 数，不冒充模型 tokenizer。 */
