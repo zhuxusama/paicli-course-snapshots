@@ -38,7 +38,8 @@ public class MemoryManager {
     }
 
     public String buildContextForQuery(String query, int maxTokens) {
-        return retriever.buildLongTermContext(query, projectKey, maxTokens);
+        // prompt 注入必须走短期+长期合并检索，否则 Agent 刚说过的话不会进入当前轮上下文。
+        return retriever.buildContextForQuery(query, projectKey, maxTokens);
     }
 
     public List<MemoryEntry> listLongTerm() { return longTerm.visibleIn(projectKey); }

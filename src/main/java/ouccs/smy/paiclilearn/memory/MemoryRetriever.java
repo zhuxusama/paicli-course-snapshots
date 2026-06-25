@@ -49,6 +49,19 @@ public class MemoryRetriever {
         return context.toString().trim();
     }
 
+    public String buildContextForQuery(String query, String projectKey, int maxTokens) {
+        List<MemoryEntry> entries = retrieve(query, projectKey, 8, maxTokens);
+        if (entries.isEmpty()) return "";
+        StringBuilder context = new StringBuilder("## 相关记忆\n\n");
+        for (MemoryEntry entry : entries) {
+            // 这里把短期会话和长期事实统一交给 prompt 层，让 Agent 当前轮真正使用刚发生的上下文。
+            String source = entry.type() == MemoryEntry.MemoryType.FACT ? entry.scope() : "short-term";
+            context.append("- [").append(source).append("] ")
+                    .append(entry.content()).append('\n');
+        }
+        return context.toString().trim();
+    }
+
     private static void addIfRelevant(List<Scored> target, MemoryEntry entry, Set<String> query, double weight) {
         double score = score(entry.content(), query) * weight;
         if (score > 0) target.add(new Scored(entry, score));
