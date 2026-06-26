@@ -68,15 +68,7 @@ public class MemoryRetriever {
     }
 
     static Set<String> tokens(String text) {
-        if (text == null || text.isBlank()) return Set.of();
-        Set<String> result = new LinkedHashSet<>();
-        String lower = text.toLowerCase(Locale.ROOT);
-        for (String word : lower.split("[^\\p{L}\\p{N}]+")) {
-            if (!word.isBlank()) result.add(word);
-        }
-        lower.codePoints().filter(c -> c >= 0x4E00 && c <= 0x9FFF)
-                .forEach(c -> result.add(new String(Character.toChars(c))));
-        return result;
+        return MemoryQueryTokenizer.tokenize(text);
     }
 
     static double score(String content, Set<String> queryTokens) {

@@ -23,8 +23,13 @@ import java.util.List;
  */
 /** [s09 新增] */
 public class ConversationHistoryCompactor {
-    private final LlmClient llmClient;
+    private LlmClient llmClient;
     private final int retainRecentRounds;
+
+    /** [s09 新增] 模型热切换时更新 LLM 客户端。 */
+    public void setLlmClient(LlmClient llmClient) {
+        this.llmClient = llmClient;
+    }
 
     public ConversationHistoryCompactor(LlmClient llmClient) {
         this(llmClient, 3);
