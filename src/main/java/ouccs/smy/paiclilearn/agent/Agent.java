@@ -1,6 +1,8 @@
 package ouccs.smy.paiclilearn.agent;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
+import ouccs.smy.paiclilearn.memory.ConversationHistoryCompactor;
 import ouccs.smy.paiclilearn.memory.ExplicitMemoryHints;
 import ouccs.smy.paiclilearn.memory.MemoryManager;
 import ouccs.smy.paiclilearn.prompt.PromptAssembler;
@@ -12,6 +14,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * 最小化 ReAct 推理-工具-观察循环。
  * <p>
@@ -21,19 +26,24 @@ import java.util.List;
  *   → 若返回 tool calls → 追加 assistant msg → 执行工具 → 追加 tool msg → 继续
  *   → 若返回 content   → 追加 assistant msg → 返回最终回答
  * </pre>
- * s07 已接入分层 prompt；后续章节继续加入记忆、预算、扩展、渲染和取消能力。
+ * s07 已接入分层 prompt；s08 接入 MemoryManager（短期+长期记忆、显式事实保存、检索注入）；
+ * s09 完成上下文预算管理和两类压缩（ConversationHistoryCompactor + ContextCompressor）。
  * </p>
  *
  * @since s03
  */
 public class Agent {
 
+    private static final Logger LOG = LoggerFactory.getLogger(Agent.class);
+
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
     private final PromptAssembler promptAssembler;
     private final PromptContext promptContext;
+    // [s08 新增] 记忆管理器——Agent 通过它保存/检索用户事实和对话记忆
     private final MemoryManager memoryManager;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
+    private final ConversationHistoryCompactor historyCompactor;
 
     /** [s05 新增] HITL 审批链；为 null 时副作用工具由 ToolRegistry 直接执行（无审批保护）。 */
     private ouccs.smy.paiclilearn.hitl.HitlToolRegistry hitlRegistry;
@@ -96,7 +106,11 @@ public class Agent {
         this.toolRegistry = toolRegistry;
         this.promptAssembler = promptAssembler;
         this.promptContext = promptContext;
+        // [s08 新增] 记忆初始化：MemoryManager 在本章已可用
         this.memoryManager = memoryManager;
+        // [s08→s09] ConversationHistoryCompactor 骨架在本章引入，Agent 构造时持有引用，
+        // 但 maybeCompactHistory() 的真实 LLM 压缩逻辑在 s09 完善。
+        this.historyCompactor = new ConversationHistoryCompactor(llmClient);
         resetConversationHistory(buildSystemPrompt());
     }
 
@@ -139,16 +153,24 @@ public class Agent {
         }
         refreshSystemPrompt(userInput);
         conversationHistory.add(LlmClient.Message.user(userInput));
+            // [s08 新增] 记录用户消息到短期记忆
         memoryManager.addUserMessage(userInput);
 
         StreamRenderer streamRenderer = new StreamRenderer();
 
         for (int i = 0; i < MAX_ITERATIONS; i++) {
+            maybeCompactHistory();
+            // [s08 修复] 通过 hitlRegistry.delegate() 获取工具定义——展示委托模式
+            var toolDefs = hitlRegistry != null
+                    ? hitlRegistry.delegate().getToolDefinitions()
+                    : toolRegistry.getToolDefinitions();
             var response = llmClient.chat(
                     conversationHistory,
-                    toolRegistry.getToolDefinitions(),
+                    toolDefs,
                     streamRenderer
             );
+            // [s08 修复] 将 LLM 返回的 reasoning 写入诊断日志，便于排查模型思考质量
+            LlmTraceLogger.logReasoning(LOG, "react iteration=" + i, llmClient, response.reasoningContent());
 
             if (response.hasToolCalls()) {
                 // ---- 工具调用分支 ----
@@ -229,6 +251,12 @@ public class Agent {
         String systemPrompt = promptAssembler.assemble(
                 PromptMode.AGENT, promptContext.withMemoryContext(memoryContext));
         conversationHistory.set(0, LlmClient.Message.system(systemPrompt));
+    }
+
+    // [s08→s09] 对话历史压缩：s08 提供调用点骨架，s09 完善 TokenBudget 驱动的真实 LLM 压缩逻辑。
+    private void maybeCompactHistory() {
+        int trigger = memoryManager.getContextProfile().compressionTriggerTokens();
+        historyCompactor.compactIfNeeded(conversationHistory, trigger);
     }
 
     private static String formatUserFacingResponse(String reasoning, String content) {
