@@ -39,7 +39,7 @@ public class Agent {
 
     private static final Logger LOG = LoggerFactory.getLogger(Agent.class);
 
-    private final LlmClient llmClient;
+    private LlmClient llmClient;
     private final ToolRegistry toolRegistry;
     private final PromptAssembler promptAssembler;
     private final PromptContext promptContext;
@@ -130,6 +130,13 @@ public class Agent {
      */
     public void setHitlRegistry(ouccs.smy.paiclilearn.hitl.HitlToolRegistry hitlRegistry) {
         this.hitlRegistry = hitlRegistry;
+    }
+    /** s09 回填: 模型热切换——同步更新 llmClient、compressor、compactor 和 contextProfile。 */
+    public void setLlmClient(LlmClient newClient) {
+        this.llmClient = newClient;
+        this.memoryManager.setLlmClient(newClient);
+        this.compactor.setLlmClient(newClient);
+        this.contextProfile = ContextProfile.from(newClient);
     }
 
     /**
