@@ -1,6 +1,7 @@
 package ouccs.smy.paiclilearn.agent;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
 import ouccs.smy.paiclilearn.context.ContextProfile;
 import ouccs.smy.paiclilearn.context.TokenUsageFormatter;
 import ouccs.smy.paiclilearn.memory.ConversationHistoryCompactor;
@@ -14,6 +15,9 @@ import ouccs.smy.paiclilearn.prompt.PromptMode;
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
 import java.io.IOException;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,6 +36,8 @@ import java.util.List;
  * @since s03
  */
 public class Agent {
+
+    private static final Logger LOG = LoggerFactory.getLogger(Agent.class);
 
     private final LlmClient llmClient;
     private final ToolRegistry toolRegistry;
@@ -170,9 +176,11 @@ public class Agent {
 
             var response = llmClient.chat(
                     conversationHistory,
-                    toolRegistry.getToolDefinitions(),
+                    (hitlRegistry != null ? hitlRegistry.delegate().getToolDefinitions() : toolRegistry.getToolDefinitions()),
                     streamRenderer
             );
+            // [s08 回填] 将 LLM 返回的 reasoning 写入诊断日志
+            LlmTraceLogger.logReasoning(LOG, "react iteration=" + i, llmClient, response.reasoningContent());
 
             // [s09 新增] 记录 Token 消耗并展示统计
             tokenBudget.recordUsage(response.inputTokens(), response.outputTokens(),

@@ -45,7 +45,7 @@ public class Main {
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
         // [s08 新增] 记忆管理器初始化
-        MemoryManager memoryManager = MemoryManager.createDefault(llmClient, toolRegistry.getProjectPath().toString());
+        MemoryManager memoryManager = MemoryManager.createDefault(llmClient, hitlRegistry.delegate().getProjectPath().toString());
             // [s08 新增]
         Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
