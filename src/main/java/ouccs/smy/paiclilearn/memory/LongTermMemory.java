@@ -17,7 +17,7 @@ public class LongTermMemory implements Memory {
 
     public LongTermMemory(Path storageFile) {
         this.storageFile = storageFile == null ? null : storageFile.toAbsolutePath().normalize();
-        load();
+        loadFromDisk();
     }
 
     public static LongTermMemory createDefault() {
@@ -39,7 +39,7 @@ public class LongTermMemory implements Memory {
                 && e.projectKey().equals(entry.projectKey()) && e.content().equals(entry.content()));
         if (!duplicate) {
             entries.put(entry.id(), entry);
-            persist();
+            saveToDisk();
         }
     }
 
@@ -85,7 +85,7 @@ public class LongTermMemory implements Memory {
         return "global".equals(entry.scope()) || entry.projectKey().equals(projectKey);
     }
 
-    private void persist() {
+    void saveToDisk() {
         if (storageFile == null) return;
         try {
             Path parent = storageFile.getParent();
@@ -103,7 +103,24 @@ public class LongTermMemory implements Memory {
         }
     }
 
-    private void load() {
+    /** 将当前内存中的长期记忆持久化到 JSON 文件。原子写入：先生成临时文件再替换。 */
+    void saveToDisk() {
+        File tmp = null;
+        try {
+            Files.createDirectories(storageFile.getParent());
+            tmp = new File(storageFile.getParentFile(), storageFile.getName() + ".tmp");
+            List<Map<String, Object>> data = new ArrayList<>();
+            for (MemoryEntry e : entries.values()) data.add(toMap(e));
+            MAPPER.writeValue(tmp, data);
+            Files.move(tmp.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            if (tmp != null) try { Files.deleteIfExists(tmp.toPath()); } catch (IOException ignored) {}
+            throw new IllegalStateException("写入长期记忆失败: " + storageFile, e);
+        }
+    }
+
+    /** 从 JSON 文件加载长期记忆。文件不存在时静默跳过；JSON 损坏时抛出异常。 */
+    void loadFromDisk() {
         if (storageFile == null || !Files.exists(storageFile)) return;
         try {
             List<Map<String, Object>> data = MAPPER.readValue(storageFile.toFile(), new TypeReference<>() {});

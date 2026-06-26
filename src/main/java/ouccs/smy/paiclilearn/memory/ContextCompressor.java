@@ -5,6 +5,8 @@ import ouccs.smy.paiclilearn.llm.LlmClient;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 /**
  * 上下文压缩器——当短期记忆条目过多时，用 MAP-REDUCE 策略压缩旧条目。
@@ -48,6 +50,40 @@ public class ContextCompressor {
             请用中文输出合并摘要，控制在300字以内。
             """;
 
+    /** s09: 从对话中自动提取稳定事实存入长期记忆。 */
+    private static final String EXTRACT_FACTS_PROMPT = """
+            请从以下对话中提取关键事实，每行一条：
+
+            事实筛选规则：
+            - 必须是长期有效的技术事实（技术栈、版本、配置、路径、约定）
+            - 用户偏好、代码习惯
+            - 项目的技术决策和规范
+
+            不应提取：
+            - 临时性的用户需求（"帮我写一个脚本"）
+            - 推测或不确定的信息
+            - 当前任务的执行细节
+
+            对话内容：
+            %s
+
+            请每行一条事实，格式：- 事实描述
+            不要输出其他内容。
+            """;
+
+    private static final List<String> EPHEMERAL_FACT_PREFIXES = List.of(
+            "用户想", "用户要", "用户需要", "用户请求", "帮我", "让我",
+            "新建", "创建", "删除", "修改", "生成", "补充要求", "当前这一轮", "本次任务"
+    );
+
+    private static final List<String> SPECULATION_CUES = List.of(
+            "可能", "应该", "猜测", "推测", "笔误", "提醒"
+    );
+
+    private static final List<String> DURABLE_FACT_HINTS = List.of(
+            "用户偏好", "用户习惯", "喜欢", "倾向", "项目", "仓库", "路径", "技术栈",
+            "版本", "模型", "接口", "配置", "环境变量", "命令", "约定", "规则", "默认"
+    );
 
 
     /** [s09 新增] 设置 LLM 客户端，用于模型热切换时更新。 */
@@ -106,6 +142,73 @@ public class ContextCompressor {
         }
 
         return finalSummary;
+    }
+
+    // ---- 事实提取 ----
+
+    /**
+     * s09: 从对话条目中自动提取稳定事实，存入长期记忆。
+     * 使用三组过滤器：排除临时需求（EPHEMERAL_FACT_PREFIXES）、
+     * 排除推测内容（SPECULATION_CUES）、偏好持久特征（DURABLE_FACT_HINTS）。
+     *
+     * @param entries         待分析的对话条目
+     * @param longTermMemory  长期记忆存储
+     * @return 提取到的事实列表
+     */
+    public List<String> extractFacts(List<MemoryEntry> entries, LongTermMemory longTermMemory) {
+        if (entries.isEmpty()) return List.of();
+
+        StringBuilder conversation = new StringBuilder();
+        for (MemoryEntry entry : entries) {
+            conversation.append(entry.type().name().toUpperCase(Locale.ROOT))
+                    .append(": ").append(entry.content()).append("\n\n");
+        }
+
+        try {
+            String prompt = String.format(EXTRACT_FACTS_PROMPT, conversation);
+            LlmClient.ChatResponse response = llmClient.chat(List.of(
+                    LlmClient.Message.system("你是一个信息提取助手，只输出关键事实，不输出其他内容。"),
+                    LlmClient.Message.user(prompt)
+            ), null);
+
+            String factsText = response.content();
+            List<String> facts = new ArrayList<>();
+            for (String line : factsText.split("\n")) {
+                String fact = normalizeFactLine(line);
+                if (isPersistentFactCandidate(fact)) {
+                    facts.add(fact);
+                    MemoryEntry factEntry = MemoryEntry.fact(fact, "project", ".");
+                    longTermMemory.store(factEntry);
+                }
+            }
+            return facts;
+        } catch (IOException e) {
+            System.err.println("⚠️ 事实提取失败: " + e.getMessage());
+            return List.of();
+        }
+    }
+
+    private String normalizeFactLine(String line) {
+        String fact = line == null ? "" : line.trim();
+        if (fact.startsWith("- ")) fact = fact.substring(2);
+        else if (fact.startsWith("• ")) fact = fact.substring(2);
+        return fact.trim();
+    }
+
+    private boolean isPersistentFactCandidate(String fact) {
+        if (fact == null || fact.length() <= 5) return false;
+        String normalized = fact.toLowerCase(Locale.ROOT);
+        for (String prefix : EPHEMERAL_FACT_PREFIXES) {
+            if (normalized.startsWith(prefix.toLowerCase(Locale.ROOT))) return false;
+        }
+        for (String cue : SPECULATION_CUES) {
+            if (normalized.contains(cue.toLowerCase(Locale.ROOT))) return false;
+        }
+        if (normalized.contains("：") || normalized.contains(":")) return true;
+        for (String hint : DURABLE_FACT_HINTS) {
+            if (normalized.contains(hint.toLowerCase(Locale.ROOT))) return true;
+        }
+        return false;
     }
 
     // ---- MAP-REDUCE 内部实现 ----

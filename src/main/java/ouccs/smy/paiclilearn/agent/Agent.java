@@ -39,15 +39,15 @@ public class Agent {
 
     private static final Logger LOG = LoggerFactory.getLogger(Agent.class);
 
-    private final LlmClient llmClient;
+    private LlmClient llmClient;
     private final ToolRegistry toolRegistry;
     private final PromptAssembler promptAssembler;
     private final PromptContext promptContext;
     // [s08 新增] 记忆管理器
     private final MemoryManager memoryManager;
-    // [s09 新增] Token 预算、压缩器、配置画像
+    // [s09 新增] Token 预算、压缩器、配置画像（模型切换时可更新）
     private final TokenBudget tokenBudget;
-    private final ContextProfile contextProfile;
+    private ContextProfile contextProfile;
     private final ConversationHistoryCompactor compactor;
     private final long startNanos;
     private final List<LlmClient.Message> conversationHistory = new ArrayList<>();
@@ -132,6 +132,14 @@ public class Agent {
      */
     public void setHitlRegistry(ouccs.smy.paiclilearn.hitl.HitlToolRegistry hitlRegistry) {
         this.hitlRegistry = hitlRegistry;
+    }
+
+    /** s09: 模型热切换——同步更新 llmClient、compressor、compactor 和 contextProfile。 */
+    public void setLlmClient(LlmClient newClient) {
+        this.llmClient = newClient;
+        this.memoryManager.setLlmClient(newClient);
+        this.compactor.setLlmClient(newClient);
+        this.contextProfile = ContextProfile.from(newClient);
     }
 
     /**
