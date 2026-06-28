@@ -58,10 +58,10 @@ public class LongTermMemory implements Memory {
     @Override public synchronized List<MemoryEntry> getAll() { return new ArrayList<>(entries.values()); }
     @Override public synchronized boolean delete(String id) {
         boolean removed = entries.remove(id) != null;
-        if (removed) persist();
+        if (removed) saveToDisk();
         return removed;
     }
-    @Override public synchronized void clear() { entries.clear(); persist(); }
+    @Override public synchronized void clear() { entries.clear(); saveToDisk(); }
     @Override public synchronized int size() { return entries.size(); }
 
     /** [s09 新增] 状态摘要。 */
@@ -77,7 +77,7 @@ public class LongTermMemory implements Memory {
         int before = entries.size();
         entries.values().removeIf(e -> "project".equals(e.scope()) && e.projectKey().equals(projectKey));
         int removed = before - entries.size();
-        if (removed > 0) persist();
+        if (removed > 0) saveToDisk();
         return removed;
     }
 
@@ -99,22 +99,6 @@ public class LongTermMemory implements Memory {
                 Files.move(temp, storageFile, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
-            throw new IllegalStateException("写入长期记忆失败: " + storageFile, e);
-        }
-    }
-
-    /** 将当前内存中的长期记忆持久化到 JSON 文件。原子写入：先生成临时文件再替换。 */
-    void saveToDisk() {
-        File tmp = null;
-        try {
-            Files.createDirectories(storageFile.getParent());
-            tmp = new File(storageFile.getParentFile(), storageFile.getName() + ".tmp");
-            List<Map<String, Object>> data = new ArrayList<>();
-            for (MemoryEntry e : entries.values()) data.add(toMap(e));
-            MAPPER.writeValue(tmp, data);
-            Files.move(tmp.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            if (tmp != null) try { Files.deleteIfExists(tmp.toPath()); } catch (IOException ignored) {}
             throw new IllegalStateException("写入长期记忆失败: " + storageFile, e);
         }
     }

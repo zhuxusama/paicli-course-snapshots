@@ -7,7 +7,9 @@ package ouccs.smy.paiclilearn.prompt;
  * @since s07
  */
 public enum PromptMode {
-    AGENT("modes/agent.md");
+    AGENT("modes/agent.md"),
+    /** [s10 新增] 计划生成模式——LLM 根据用户目标拆分为 DAG 任务序列。 */
+    PLANNER("modes/planner.md");
 
     private final String resourcePath;
 

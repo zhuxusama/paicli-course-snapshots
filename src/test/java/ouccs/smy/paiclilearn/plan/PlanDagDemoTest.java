@@ -5,10 +5,17 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** [s10 新增] 教学演示：Task 状态机 → DAG → 拓扑序 → 执行批次。 */
+/**
+ * 教学演示：Task 状态机 → DAG → 拓扑序 → 执行批次。
+ *
+ * <p>展示"输入 → 转换 → 输出"的完整链路，使用源码 getter/setter API。</p>
+ *
+ * @since s10
+ */
 class PlanDagDemoTest {
 
-    @Test void demoTaskStateMachineAndDag() {
+    @Test
+    void demoTaskStateMachineAndDag() {
         System.out.println("===== s10 Task DAG 演示 =====");
 
         // 1. 输入：定义 4 个任务形成 DAG
@@ -33,18 +40,19 @@ class PlanDagDemoTest {
         assertTrue(acyclic);
 
         // 执行批次
-        var batches = plan.getExecutionBatches();
-        System.out.println("执行批次: " + batches);
+        List<List<Task>> batches = plan.getExecutionBatches();
+        System.out.println("执行批次: " + batches.stream()
+                .map(b -> b.stream().map(Task::getId).toList())
+                .toList());
 
         // 3. 输出：模拟执行
         for (int batchIdx = 0; batchIdx < batches.size(); batchIdx++) {
-            List<String> batch = batches.get(batchIdx);
-            for (String taskId : batch) {
-                Task task = plan.tasks().get(taskId);
-                System.out.println("  执行 [" + batchIdx + "] " + task.id() + ": " + task.description());
+            List<Task> batch = batches.get(batchIdx);
+            for (Task task : batch) {
+                System.out.println("  执行 [" + batchIdx + "] " + task.getId()
+                        + ": " + task.getDescription());
                 task.markStarted();
-                // 模拟任务执行
-                task.markCompleted(task.description() + " 完成");
+                task.markCompleted(task.getDescription() + " 完成");
             }
         }
         System.out.println("最终进度: " + plan.getProgress());
@@ -52,43 +60,61 @@ class PlanDagDemoTest {
         System.out.println("===== 演示结束 =====");
     }
 
-    @Test void demoTaskStateTransitions() {
+    @Test
+    void demoTaskStateTransitions() {
         System.out.println("===== Task 状态机演示 =====");
 
         Task task = new Task("t1", "验证状态", Task.TaskType.COMMAND);
-        assertEquals(Task.TaskStatus.PENDING, task.status());
+        assertEquals(Task.TaskStatus.PENDING, task.getStatus());
 
         task.markStarted();
-        assertEquals(Task.TaskStatus.RUNNING, task.status());
-        // s10 修复: 验证 startTime getter
-        System.out.println("  startTime: " + task.startTime());
+        assertEquals(Task.TaskStatus.RUNNING, task.getStatus());
+        long startTime = task.getStartTime();
+        assertTrue(startTime > 0, "markStarted 应设置 startTime");
+        System.out.println("  startTime: " + startTime);
 
         task.markCompleted("完成");
-        assertEquals(Task.TaskStatus.COMPLETED, task.status());
-        // s10 修复: 验证 endTime getter
-        System.out.println("  endTime: " + task.endTime());
-        assertTrue(task.endTime() >= task.startTime(), "endTime >= startTime");
+        assertEquals(Task.TaskStatus.COMPLETED, task.getStatus());
+        assertEquals("完成", task.getResult());
+        long endTime = task.getEndTime();
+        assertTrue(endTime >= startTime, "endTime >= startTime");
+        System.out.println("  endTime: " + endTime);
 
+        // 验证耗时
+        assertTrue(task.getDuration() >= 0);
+        System.out.println("  duration: " + task.getDuration() + "ms");
+
+        // 验证 toString
+        String str = task.toString();
+        assertTrue(str.contains("t1"));
+        assertTrue(str.contains("COMPLETED"));
+        System.out.println("  toString: " + str);
+
+        // FAILED → SKIPPED 状态路径
         task.markFailed("失败了");
-        assertEquals(Task.TaskStatus.FAILED, task.status());
-        assertEquals("失败了", task.error());
+        assertEquals(Task.TaskStatus.FAILED, task.getStatus());
+        assertEquals("失败了", task.getError());
 
         task.markSkipped();
-        assertEquals(Task.TaskStatus.SKIPPED, task.status());
+        assertEquals(Task.TaskStatus.SKIPPED, task.getStatus());
 
-        System.out.println("PENDING → RUNNING → COMPLETED → FAILED → SKIPPED: ✓");
+        System.out.println("PENDING → RUNNING → COMPLETED → FAILED → SKIPPED: ✅");
     }
 
-    @Test void demoPlanMetadataAndDependencies() {
+    @Test
+    void demoPlanMetadataAndDependencies() {
         System.out.println("===== Plan 元数据与依赖演示 =====");
 
         // 1. 输入：构造有依赖的任务
         Task t1 = new Task("t1", "下载依赖", Task.TaskType.COMMAND);
         Task t2 = new Task("t2", "编译项目", Task.TaskType.COMMAND, List.of("t1"));
 
-        // s10 修复: dependents() 展示依赖链
-        System.out.println("  t2 依赖: " + t2.dependents());
-        assertTrue(t2.dependents().contains("t1"));
+        System.out.println("  t2 依赖: " + t2.getDependencies());
+        assertTrue(t2.getDependencies().contains("t1"));
+
+        // addDependency 动态添加依赖
+        t1.addDependency("t0");
+        assertTrue(t1.getDependencies().contains("t0"));
 
         // 2. 转换：创建 Plan 并设置元数据
         ExecutionPlan plan = new ExecutionPlan("plan_meta", "验证 Plan 元数据访问");
@@ -96,30 +122,40 @@ class PlanDagDemoTest {
         plan.addTask(t1);
         plan.addTask(t2);
 
-        // s10 修复: goal() + summary() 展示 Plan 级元数据
-        System.out.println("  goal: " + plan.goal());
-        System.out.println("  summary: " + plan.summary());
-        assertEquals("验证 Plan 元数据访问", plan.goal());
-        assertEquals("这是一个包含两个任务的演示计划", plan.summary());
+        System.out.println("  goal: " + plan.getGoal());
+        System.out.println("  summary: " + plan.getSummary());
+        assertEquals("验证 Plan 元数据访问", plan.getGoal());
+        assertEquals("这是一个包含两个任务的演示计划", plan.getSummary());
 
-        // 3. 输出：验证
-        System.out.println("  任务数: " + plan.tasks().size());
-        assertEquals(2, plan.tasks().size());
+        // 3. 输出：验证 getTask / getAllTasks
+        assertEquals(2, plan.getAllTasks().size());
+        assertNotNull(plan.getTask("t1"));
+        assertNotNull(plan.getTask("t2"));
+
+        // dependents 链
+        System.out.println("  t1 的被依赖者: " + t1.getDependents());
+        assertTrue(t1.getDependents().contains("t2"));
+
+        // visualize 不抛异常
+        String viz = plan.visualize();
+        System.out.println("  visualize 长度: " + viz.length());
+        assertTrue(viz.contains("验证 Plan 元数据访问"));
+        assertTrue(viz.contains("t1"));
+        assertTrue(viz.contains("t2"));
     }
 
-    @Test void demoTokenBudgetContextWindow() {
+    @Test
+    void demoTokenBudgetContextWindow() {
         System.out.println("===== TokenBudget 窗口演示 =====");
 
-        // s10 修复: contextWindow() 展示窗口大小读取
         TokenBudget budget = new TokenBudget(128000);
         System.out.println("  窗口大小: " + budget.contextWindow());
         assertEquals(128000, budget.contextWindow());
 
-        // 存入一些用量后检查窗口仍不变
         budget.recordUsage(4000, 800, 500);
         System.out.println("  存入 4000 输入后窗口大小: " + budget.contextWindow());
         assertEquals(128000, budget.contextWindow());
 
-        System.out.println("  ✓ 窗口大小不受 usage 影响");
+        System.out.println("  ✅ 窗口大小不受 usage 影响");
     }
 }

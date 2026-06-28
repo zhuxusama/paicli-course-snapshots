@@ -1,92 +1,168 @@
 package ouccs.smy.paiclilearn.plan;
 
 import org.junit.jupiter.api.Test;
+
 import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
-/** [s10 新增] 验证 ExecutionPlan 的 DAG 结构、拓扑排序和执行批次。 */
+/**
+ * 验证 ExecutionPlan 的 DAG 结构、拓扑排序、执行批次和状态机。
+ * 以原项目 {@code com.paicli.plan.ExecutionPlanTest} 为行为基线。
+ *
+ * @since s10
+ */
 class ExecutionPlanTest {
 
-    @Test void addTaskIncreasesCount() {
-        var plan = new ExecutionPlan("p1", "测试");
-        plan.addTask(new Task("t1", "任务1", Task.TaskType.COMMAND));
-        assertEquals(1, plan.tasks().size());
+    @Test
+    void computeExecutionOrderRespectsDependencies() {
+        ExecutionPlan plan = new ExecutionPlan("plan_1", "demo");
+        Task task1 = new Task("task_1", "create project", Task.TaskType.COMMAND);
+        Task task2 = new Task("task_2", "read pom", Task.TaskType.FILE_READ, List.of("task_1"));
+        Task task3 = new Task("task_3", "verify structure", Task.TaskType.VERIFICATION, List.of("task_2"));
+
+        plan.addTask(task1);
+        plan.addTask(task2);
+        plan.addTask(task3);
+
+        assertEquals(List.of("task_1", "task_2", "task_3"), plan.getExecutionOrder());
     }
 
-    @Test void topologicalOrderRespectsDependencies() {
-        var plan = new ExecutionPlan("p1", "依赖测试");
-        plan.addTask(new Task("t1", "第一步", Task.TaskType.ANALYSIS));
-        plan.addTask(new Task("t2", "第二步", Task.TaskType.FILE_WRITE, List.of("t1")));
-        plan.addTask(new Task("t3", "第三步", Task.TaskType.VERIFICATION, List.of("t2")));
+    @Test
+    void executableTasksWaitUntilDependenciesComplete() {
+        ExecutionPlan plan = new ExecutionPlan("plan_2", "demo");
+        Task task1 = new Task("task_1", "create project", Task.TaskType.COMMAND);
+        Task task2 = new Task("task_2", "read pom", Task.TaskType.FILE_READ, List.of("task_1"));
 
-        boolean acyclic = plan.computeExecutionOrder();
-        assertTrue(acyclic);
+        plan.addTask(task1);
+        plan.addTask(task2);
 
-        List<String> order = plan.getExecutionOrder();
-        assertTrue(order.indexOf("t1") < order.indexOf("t2"),
-                "t1 (分析) 应在 t2 (写入) 之前");
-        assertTrue(order.indexOf("t2") < order.indexOf("t3"),
-                "t2 (写入) 应在 t3 (验证) 之前");
+        assertEquals(List.of(task1), plan.getExecutableTasks());
+
+        task1.markCompleted("done");
+
+        assertEquals(List.of(task2), plan.getExecutableTasks());
     }
 
-    @Test void cycleDetectionReturnsFalse() {
-        var plan = new ExecutionPlan("p1", "循环测试");
+    @Test
+    void addDependencyMutatesTaskState() {
+        Task task = new Task("task_1", "read pom", Task.TaskType.FILE_READ);
+
+        task.addDependency("task_0");
+
+        assertEquals(List.of("task_0"), task.getDependencies());
+    }
+
+    @Test
+    void addTaskBuildsDependentRelationship() {
+        ExecutionPlan plan = new ExecutionPlan("plan_3", "demo");
+        Task task1 = new Task("task_1", "create project", Task.TaskType.COMMAND);
+        Task task2 = new Task("task_2", "read pom", Task.TaskType.FILE_READ, List.of("task_1"));
+
+        plan.addTask(task1);
+        plan.addTask(task2);
+
+        assertTrue(plan.getTask("task_1").getDependents().contains("task_2"));
+    }
+
+    @Test
+    void executableTasksCanExposeParallelBatch() {
+        ExecutionPlan plan = new ExecutionPlan("plan_4", "demo");
+        Task task1 = new Task("task_1", "read pom", Task.TaskType.FILE_READ);
+        Task task2 = new Task("task_2", "list dir", Task.TaskType.COMMAND);
+        Task task3 = new Task("task_3", "verify", Task.TaskType.VERIFICATION, List.of("task_1", "task_2"));
+
+        plan.addTask(task1);
+        plan.addTask(task2);
+        plan.addTask(task3);
+
+        assertEquals(List.of(task1, task2), plan.getExecutableTasks());
+
+        task1.markCompleted("done");
+        assertEquals(List.of(task2), plan.getExecutableTasks());
+
+        task2.markCompleted("done");
+        assertEquals(List.of(task3), plan.getExecutableTasks());
+    }
+
+    @Test
+    void summarizeKeepsPlanPreviewCompact() {
+        ExecutionPlan plan = new ExecutionPlan("plan_5",
+                "请把任务拆成可并行的 DAG:\n1. 读取 pom.xml\n2. 列出 src/main/java");
+        Task task1 = new Task("task_1", "read pom", Task.TaskType.FILE_READ);
+        Task task2 = new Task("task_2", "list src main java", Task.TaskType.COMMAND);
+        Task task3 = new Task("task_3", "summarize project", Task.TaskType.ANALYSIS,
+                List.of("task_1", "task_2"));
+
+        plan.addTask(task1);
+        plan.addTask(task2);
+        plan.addTask(task3);
+
+        String summary = plan.summarize();
+
+        assertTrue(summary.contains("任务数: 3 | 并行批次: 2 | 当前可执行: 2"));
+        assertTrue(summary.contains("首批执行: task_1, task_2"));
+        assertTrue(summary.contains("最终收敛: task_3"));
+        assertTrue(!summary.contains("╔════════"));
+    }
+
+    @Test
+    void executionBatchesFollowDagLayers() {
+        ExecutionPlan plan = new ExecutionPlan("plan_6", "demo");
+        Task task1 = new Task("task_1", "read pom", Task.TaskType.FILE_READ);
+        Task task2 = new Task("task_2", "list main", Task.TaskType.COMMAND);
+        Task task3 = new Task("task_3", "list test", Task.TaskType.COMMAND);
+        Task task4 = new Task("task_4", "read readme", Task.TaskType.FILE_READ);
+        Task task5 = new Task("task_5", "summarize", Task.TaskType.ANALYSIS,
+                List.of("task_1", "task_2", "task_3", "task_4"));
+
+        plan.addTask(task1);
+        plan.addTask(task2);
+        plan.addTask(task3);
+        plan.addTask(task4);
+        plan.addTask(task5);
+
+        List<List<Task>> batches = plan.getExecutionBatches();
+
+        assertEquals(List.of(task1, task2, task3, task4), batches.get(0));
+        assertEquals(List.of(task5), batches.get(1));
+    }
+
+    @Test
+    void cycleDetectionReturnsFalse() {
+        ExecutionPlan plan = new ExecutionPlan("p1", "循环测试");
         plan.addTask(new Task("t1", "A", Task.TaskType.COMMAND, List.of("t2")));
         plan.addTask(new Task("t2", "B", Task.TaskType.COMMAND, List.of("t1")));
 
         assertFalse(plan.computeExecutionOrder());
     }
 
-    @Test void rootTasksHaveNoDependencies() {
-        var plan = new ExecutionPlan("p1", "根测试");
-        plan.addTask(new Task("t1", "根", Task.TaskType.ANALYSIS));
-        plan.addTask(new Task("t2", "依赖", Task.TaskType.COMMAND, List.of("t1")));
-
-        var roots = plan.getRootTasks();
-        assertEquals(1, roots.size());
-        assertEquals("t1", roots.get(0).id());
-    }
-
-    @Test void executableTasksExcludeBlockedOnes() {
-        var plan = new ExecutionPlan("p1", "可执行测试");
-        Task t1 = new Task("t1", "根", Task.TaskType.ANALYSIS);
-        Task t2 = new Task("t2", "依赖", Task.TaskType.COMMAND, List.of("t1"));
-        plan.addTask(t1);
-        plan.addTask(t2);
-
-        var executable = plan.getExecutableTasks();
-        assertEquals(1, executable.size());
-        assertEquals("t1", executable.get(0).id());
-    }
-
-    @Test void progressReportsCorrectFraction() {
-        var plan = new ExecutionPlan("p1", "进度测试");
+    @Test
+    void progressReportsCorrectFraction() {
+        ExecutionPlan plan = new ExecutionPlan("p1", "进度测试");
         plan.addTask(new Task("t1", "A", Task.TaskType.COMMAND));
         plan.addTask(new Task("t2", "B", Task.TaskType.COMMAND));
 
         assertEquals(0.0, plan.getProgress(), 0.01);
     }
 
-    @Test void getExecutionBatchesProducesOrderedGroups() {
-        var plan = new ExecutionPlan("p1", "批次测试");
-        plan.addTask(new Task("t1", "A", Task.TaskType.ANALYSIS));
-        plan.addTask(new Task("t2", "B", Task.TaskType.FILE_READ));
-        plan.addTask(new Task("t3", "C", Task.TaskType.COMMAND, List.of("t1", "t2")));
+    @Test
+    void isAllCompletedAndHasFailed() {
+        ExecutionPlan plan = new ExecutionPlan("p1", "状态测试");
+        Task t1 = new Task("t1", "A", Task.TaskType.COMMAND);
+        plan.addTask(t1);
 
-        var batches = plan.getExecutionBatches();
-        assertTrue(batches.size() >= 2, "应有至少 2 个批次");
-        assertTrue(batches.get(0).contains("t1"), "第一批应有 t1");
-        assertTrue(batches.get(0).contains("t2"), "第一批应有 t2");
-    }
+        assertFalse(plan.isAllCompleted());
+        assertFalse(plan.hasFailed());
 
-    @Test void summarizeContainsGoalAndTaskCount() {
-        var plan = new ExecutionPlan("p1", "摘要测试");
-        plan.addTask(new Task("t1", "任务1", Task.TaskType.COMMAND));
-        plan.addTask(new Task("t2", "任务2", Task.TaskType.FILE_READ, List.of("t1")));
+        t1.markCompleted("ok");
+        assertTrue(plan.isAllCompleted());
+        assertFalse(plan.hasFailed());
 
-        String summary = plan.summarize();
-        assertTrue(summary.contains("摘要测试"));
-        assertTrue(summary.contains("t1"));
-        assertTrue(summary.contains("t2"));
+        Task t2 = new Task("t2", "failed task", Task.TaskType.COMMAND);
+        plan.addTask(t2);
+        t2.markFailed("error");
+        assertFalse(plan.isAllCompleted());
+        assertTrue(plan.hasFailed());
     }
 }
