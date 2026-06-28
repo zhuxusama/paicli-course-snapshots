@@ -1,5 +1,7 @@
 package ouccs.smy.paiclilearn.agent;
 
+import ouccs.smy.paiclilearn.llm.LlmClient;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
@@ -62,6 +64,21 @@ public class AgentBudget {
         this.tokenBudget = tokenBudget;
         this.stagnationWindow = stagnationWindow;
         this.hardMaxIterations = hardMaxIterations;
+    }
+
+    /** 从 paicli.react.* 系统属性创建一次运行使用的预算。 */
+    public static AgentBudget fromSystemProperties() {
+        return fromLlmClient(null);
+    }
+
+    /**
+     * 根据当前模型创建预算。模型参数保留为扩展入口；当前默认 token 硬限仍为无限。
+     */
+    public static AgentBudget fromLlmClient(LlmClient llmClient) {
+        return new AgentBudget(
+                readIntProperty("paicli.react.token.budget", DEFAULT_TOKEN_BUDGET),
+                readIntProperty("paicli.react.stagnation.window", DEFAULT_STAGNATION_WINDOW),
+                readIntProperty("paicli.react.hard.max.iterations", DEFAULT_HARD_MAX_ITERATIONS));
     }
 
     /** 进入新一轮迭代，返回当前轮次（从 1 开始）。 */
@@ -144,5 +161,18 @@ public class AgentBudget {
             sb.append(tc.function().name()).append('|').append(tc.function().arguments()).append(';');
         }
         return sb.toString();
+    }
+
+    private static int readIntProperty(String key, int defaultValue) {
+        String raw = System.getProperty(key);
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed > 0 ? parsed : defaultValue;
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
     }
 }

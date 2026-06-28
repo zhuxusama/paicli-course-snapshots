@@ -52,4 +52,21 @@ class AgentBudgetTest {
         assertTrue(budget.describeExit(AgentBudget.ExitReason.TOKEN_BUDGET_EXCEEDED).contains("Token"));
         assertTrue(budget.describeExit(AgentBudget.ExitReason.HARD_ITERATION_LIMIT).contains("硬轮数"));
     }
+
+    @Test
+    void readsPositiveSystemPropertyOverrides() {
+        System.setProperty("paicli.react.token.budget", "123");
+        System.setProperty("paicli.react.stagnation.window", "4");
+        System.setProperty("paicli.react.hard.max.iterations", "9");
+        try {
+            var budget = AgentBudget.fromSystemProperties();
+            assertEquals(123, budget.tokenBudget());
+            assertEquals(4, budget.stagnationWindow());
+            assertEquals(9, budget.hardMaxIterations());
+        } finally {
+            System.clearProperty("paicli.react.token.budget");
+            System.clearProperty("paicli.react.stagnation.window");
+            System.clearProperty("paicli.react.hard.max.iterations");
+        }
+    }
 }

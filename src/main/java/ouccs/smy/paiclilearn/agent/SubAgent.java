@@ -87,7 +87,7 @@ public class SubAgent {
         }
 
         // 每次独立任务创建新预算，避免前一个任务的计数或停滞状态污染后一个任务。
-        AgentBudget budget = new AgentBudget();
+        AgentBudget budget = AgentBudget.fromLlmClient(llmClient);
         try {
             while (true) {
                 // [s13] 预算检查

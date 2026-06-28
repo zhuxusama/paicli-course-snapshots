@@ -176,7 +176,7 @@ public class Agent {
 
         StreamRenderer streamRenderer = new StreamRenderer();
         // 每次用户任务都必须拥有独立预算，不能把上一轮的 token、停滞或迭代状态带进来。
-        AgentBudget budget = new AgentBudget();
+        AgentBudget budget = AgentBudget.fromLlmClient(llmClient);
 
         // [s13 改造] AgentBudget 替换硬编码 MAX_ITERATIONS
         while (true) {
