@@ -59,9 +59,6 @@ public class Agent {
     /** 用户传入的流式输出监听器。不可为 null；默认为 NO_OP。 */
     private LlmClient.StreamListener userStreamListener = LlmClient.StreamListener.NO_OP;
 
-    /** [s13 替换] AgentBudget 取代硬编码 MAX_ITERATIONS。 */
-    private final AgentBudget budget = new AgentBudget();
-
     /**
      * 使用默认 ToolRegistry 构造 Agent。
      * @param llmClient 真实模型客户端，不可为 null
@@ -178,6 +175,8 @@ public class Agent {
         memoryManager.addUserMessage(userInput);
 
         StreamRenderer streamRenderer = new StreamRenderer();
+        // 每次用户任务都必须拥有独立预算，不能把上一轮的 token、停滞或迭代状态带进来。
+        AgentBudget budget = new AgentBudget();
 
         // [s13 改造] AgentBudget 替换硬编码 MAX_ITERATIONS
         while (true) {

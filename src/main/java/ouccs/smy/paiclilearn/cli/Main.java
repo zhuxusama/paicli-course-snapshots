@@ -52,8 +52,8 @@ public class Main {
         Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v12 (Chapter 12 - Multi-Agent 团队协作)");
-        System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /team | /clear | /exit");
+        System.out.println("PaiCLI 教学版 v13 (Chapter 13 - 并行工具、预算与取消)");
+        System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /team | /cancel | /clear | /exit");
 
         Scanner scanner = new Scanner(System.in);
         while (true) {

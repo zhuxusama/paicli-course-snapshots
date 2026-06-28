@@ -33,11 +33,6 @@ public class SubAgent {
     private final ToolRegistry toolRegistry;
     private final List<LlmClient.Message> history = new ArrayList<>();
 
-    /** [s13] 单次任务的最大 LLM 迭代轮数（AgentBudget 将接管此职责）。 */
-    static final int MAX_ITERATIONS = 5;
-    /** [s13 新增] 预算控制——与 Agent 共享同一兜底逻辑。 */
-    private final AgentBudget budget = new AgentBudget();
-
     /**
      * 构造一个具有指定角色和 LLM 客户端的子代理。
      *
@@ -91,8 +86,10 @@ public class SubAgent {
             return AgentMessage.error(name, role, "任务已取消");
         }
 
+        // 每次独立任务创建新预算，避免前一个任务的计数或停滞状态污染后一个任务。
+        AgentBudget budget = new AgentBudget();
         try {
-            for (int i = 0; i < MAX_ITERATIONS; i++) {
+            while (true) {
                 // [s13] 预算检查
                 AgentBudget.ExitReason exitReason = budget.check();
                 if (exitReason != AgentBudget.ExitReason.WITHIN_BUDGET) {
@@ -108,9 +105,11 @@ public class SubAgent {
                         new ArrayList<>(history),
                         tools,
                         LlmClient.StreamListener.NO_OP);
+                budget.recordTokens(resp.inputTokens(), resp.outputTokens(), resp.cachedInputTokens());
 
                 // 推理后有工具调用：执行工具并把 assistant+tool 消息回灌历史
                 if (resp.hasToolCalls()) {
+                    budget.recordToolCalls(resp.toolCalls());
                     history.add(LlmClient.Message.assistant(
                             resp.reasoningContent(), resp.content(), resp.toolCalls()));
                     for (var tc : resp.toolCalls()) {
@@ -124,9 +123,6 @@ public class SubAgent {
                 history.add(LlmClient.Message.assistant(resp.content()));
                 return AgentMessage.result(name, role, resp.content());
             }
-
-            // 达到 MAX_ITERATIONS 仍未自主结束
-            return AgentMessage.error(name, role, "超过最大迭代次数 " + MAX_ITERATIONS);
         } catch (Exception e) {
             return AgentMessage.error(name, role, "LLM 调用或工具执行异常: " + e.getMessage());
         }

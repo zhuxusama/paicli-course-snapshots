@@ -45,6 +45,18 @@ class SubAgentTest {
         assertEquals(AgentMessage.Type.RESULT, r2.type());
     }
 
+    @Test
+    void budgetReplacesLegacyFiveIterationLimit() {
+        var stub = new SixToolCallsThenAnswerClient();
+        var sub = new SubAgent("worker", AgentRole.WORKER, stub, new ToolRegistry());
+
+        var result = sub.execute(AgentMessage.task("o", "需要多轮工具调用的任务"));
+
+        assertEquals(AgentMessage.Type.RESULT, result.type());
+        assertEquals("六轮后完成", result.content());
+        assertEquals(7, stub.calls);
+    }
+
     /** 不使用工具、直接返回文本响应的桩 LLM 客户端。 */
     static class StubLlmClient implements LlmClient {
         @Override
@@ -53,5 +65,24 @@ class SubAgentTest {
         }
         @Override public String getModelName() { return "stub"; }
         @Override public String getProviderName() { return "stub"; }
+    }
+
+    /** 前六轮返回不同参数的工具调用，第七轮给出最终答案。 */
+    static final class SixToolCallsThenAnswerClient implements LlmClient {
+        private int calls;
+
+        @Override
+        public ChatResponse chat(List<Message> messages, List<Tool> tools, StreamListener listener) {
+            calls++;
+            if (calls <= 6) {
+                var function = new ToolCall.Function("read_file", "{\"path\":\"missing-" + calls + ".txt\"}");
+                return new ChatResponse("assistant", "", null,
+                        List.of(new ToolCall("call-" + calls, function)), 1, 1, 0);
+            }
+            return new ChatResponse("assistant", "六轮后完成", null, null, 1, 1, 0);
+        }
+
+        @Override public String getModelName() { return "six-tool-calls"; }
+        @Override public String getProviderName() { return "test"; }
     }
 }
