@@ -55,9 +55,10 @@ class CliCommandParserTest {
         assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, cmd.type(),
                 "s06 未实现的命令应返回 UNKNOWN_COMMAND, s11 起 /plan 变为有效");
 
+        // [s12 修改] /team 在 s12 起成为有效命令 (SWITCH_TEAM)，不再是 UNKNOWN_COMMAND
         cmd = CliCommandParser.parse("/team");
-        assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, cmd.type(),
-                "s06 未实现 /team, s12 起变为有效");
+        assertEquals(CliCommandParser.CommandType.SWITCH_TEAM, cmd.type(),
+                "s12 起 /team 变为 SWITCH_TEAM");
     }
 
     @Test void plainTextWithSlashInsideNotTreatedAsCommand() {

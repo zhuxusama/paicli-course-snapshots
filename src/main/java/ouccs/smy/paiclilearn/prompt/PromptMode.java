@@ -11,7 +11,13 @@ public enum PromptMode {
     /** [s10 新增] 计划生成模式——LLM 根据用户目标拆分为 DAG 任务序列。 */
     PLANNER("modes/planner.md"),
     /** [s11 新增] 计划执行模式——按 DAG 逐个执行任务，带工具调用和审阅闭环。 */
-    PLAN("modes/plan.md");
+    PLAN("modes/plan.md"),
+    /** [s12 新增] 团队规划者模式——将用户任务拆解为 JSON 执行计划。 */
+    TEAM_PLANNER("modes/team-planner.md"),
+    /** [s12 新增] 团队执行者模式——按步骤调用工具完成具体操作。 */
+    TEAM_WORKER("modes/team-worker.md"),
+    /** [s12 新增] 团队检查者模式——审核执行结果质量，输出审批 JSON。 */
+    TEAM_REVIEWER("modes/team-reviewer.md");
 
     private final String resourcePath;
 

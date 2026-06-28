@@ -9,7 +9,7 @@ class MainInputNormalizationTest {
 
     /** 未知 /xxx 在 CLI 层被标记为 UNKNOWN_COMMAND，不进入 Agent。 */
     @Test void unknownSlashCommandsRejectedAtCliLayer() {
-        String[] unknowns = {"/plan", "/team", "/mcp", "/skill", "/snapshot", "/task"};
+        String[] unknowns = {"/plan", "/mcp", "/skill", "/snapshot", "/task"};  // [s12] /team 已实现
         for (String cmd : unknowns) {
             var parsed = CliCommandParser.parse(cmd);
             assertEquals(CliCommandParser.CommandType.UNKNOWN_COMMAND, parsed.type(),
