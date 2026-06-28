@@ -1,5 +1,6 @@
 package ouccs.smy.paiclilearn.plan;
 
+import ouccs.smy.paiclilearn.memory.TokenBudget;
 import org.junit.jupiter.api.Test;
 import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
@@ -51,7 +52,7 @@ class PlanDagDemoTest {
         System.out.println("===== 演示结束 =====");
     }
 
-    @Test void demoTaskStatusTransitions() {
+    @Test void demoTaskStateTransitions() {
         System.out.println("===== Task 状态机演示 =====");
 
         Task task = new Task("t1", "验证状态", Task.TaskType.COMMAND);
@@ -59,9 +60,14 @@ class PlanDagDemoTest {
 
         task.markStarted();
         assertEquals(Task.TaskStatus.RUNNING, task.status());
+        // s10 修复: 验证 startTime getter
+        System.out.println("  startTime: " + task.startTime());
 
         task.markCompleted("完成");
         assertEquals(Task.TaskStatus.COMPLETED, task.status());
+        // s10 修复: 验证 endTime getter
+        System.out.println("  endTime: " + task.endTime());
+        assertTrue(task.endTime() >= task.startTime(), "endTime >= startTime");
 
         task.markFailed("失败了");
         assertEquals(Task.TaskStatus.FAILED, task.status());
@@ -71,5 +77,49 @@ class PlanDagDemoTest {
         assertEquals(Task.TaskStatus.SKIPPED, task.status());
 
         System.out.println("PENDING → RUNNING → COMPLETED → FAILED → SKIPPED: ✓");
+    }
+
+    @Test void demoPlanMetadataAndDependencies() {
+        System.out.println("===== Plan 元数据与依赖演示 =====");
+
+        // 1. 输入：构造有依赖的任务
+        Task t1 = new Task("t1", "下载依赖", Task.TaskType.COMMAND);
+        Task t2 = new Task("t2", "编译项目", Task.TaskType.COMMAND, List.of("t1"));
+
+        // s10 修复: dependents() 展示依赖链
+        System.out.println("  t2 依赖: " + t2.dependents());
+        assertTrue(t2.dependents().contains("t1"));
+
+        // 2. 转换：创建 Plan 并设置元数据
+        ExecutionPlan plan = new ExecutionPlan("plan_meta", "验证 Plan 元数据访问");
+        plan.setSummary("这是一个包含两个任务的演示计划");
+        plan.addTask(t1);
+        plan.addTask(t2);
+
+        // s10 修复: goal() + summary() 展示 Plan 级元数据
+        System.out.println("  goal: " + plan.goal());
+        System.out.println("  summary: " + plan.summary());
+        assertEquals("验证 Plan 元数据访问", plan.goal());
+        assertEquals("这是一个包含两个任务的演示计划", plan.summary());
+
+        // 3. 输出：验证
+        System.out.println("  任务数: " + plan.tasks().size());
+        assertEquals(2, plan.tasks().size());
+    }
+
+    @Test void demoTokenBudgetContextWindow() {
+        System.out.println("===== TokenBudget 窗口演示 =====");
+
+        // s10 修复: contextWindow() 展示窗口大小读取
+        TokenBudget budget = new TokenBudget(128000);
+        System.out.println("  窗口大小: " + budget.contextWindow());
+        assertEquals(128000, budget.contextWindow());
+
+        // 存入一些用量后检查窗口仍不变
+        budget.recordUsage(4000, 800, 500);
+        System.out.println("  存入 4000 输入后窗口大小: " + budget.contextWindow());
+        assertEquals(128000, budget.contextWindow());
+
+        System.out.println("  ✓ 窗口大小不受 usage 影响");
     }
 }
