@@ -25,7 +25,7 @@ public class PromptAssembler {
     }
 
     /**
-     * 按 base、personality、mode、approval、runtime 的顺序组装 prompt。
+     * 按 base、personality、mode、approval、runtime、memory、handoff 的顺序组装 prompt。
      */
     public String assemble(PromptMode mode, PromptContext context) {
         Objects.requireNonNull(mode, "mode");
@@ -45,6 +45,7 @@ public class PromptAssembler {
         if (!ctx.memoryContext().isBlank()) {
             append(prompt, ctx.memoryContext());
         }
+        append(prompt, repository.loadRequired("handoff.md"));
 
         String assembled = replaceVariables(prompt.toString(), variables).trim();
         if (!assembled.contains("## Language")) {
