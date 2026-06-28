@@ -46,7 +46,9 @@ public class Main {
         ToolRegistry toolRegistry = new ToolRegistry();
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
+        // [s08 新增] 记忆管理器初始化
         MemoryManager memoryManager = MemoryManager.createDefault(llmClient, hitlRegistry.delegate().getProjectPath().toString());
+            // [s08 新增]
         Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
@@ -88,6 +90,7 @@ public class Main {
                     System.out.println();
                     continue;
                 }
+                // [s08 新增] /save 命令处理
                 case SAVE_MEMORY -> {
                     String payload = parsed.payload();
                     if (payload == null || payload.isBlank()) {
@@ -108,6 +111,7 @@ public class Main {
                     System.out.println("已保存长期记忆: " + saved.id() + " [" + saved.scope() + "]\n");
                     continue;
                 }
+                // [s08 新增] /memory 命令处理
                 case MEMORY -> {
                     String payload = parsed.payload() == null ? "" : parsed.payload().trim();
                     String[] parts = payload.split("\\s+", 2);

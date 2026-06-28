@@ -32,10 +32,11 @@ class PromptAssemblerTest {
         String prompt = PromptAssembler.createDefault().assemble(PromptMode.AGENT, context);
 
         assertOrdered(prompt, "## Identity", "## Personality", "## Mode: ReAct Agent",
-                "## Approval Mode", "## Runtime Context");
+                "## Approval Mode", "## Runtime Context", "## Handoff");
         assertTrue(prompt.contains("2026-06-21"));
         assertTrue(prompt.contains("Asia/Shanghai"));
         assertTrue(prompt.contains("偏自动执行"));
+        assertTrue(prompt.contains("不要虚构未执行的命令或未看到的文件"));
     }
 
     @Test
