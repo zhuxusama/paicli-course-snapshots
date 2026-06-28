@@ -13,6 +13,7 @@ import ouccs.smy.paiclilearn.prompt.PromptAssembler;
 import ouccs.smy.paiclilearn.prompt.PromptContext;
 import ouccs.smy.paiclilearn.prompt.PromptMode;
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
+import ouccs.smy.paiclilearn.runtime.CancellationContext;  // [s13 新增]
 
 import java.io.IOException;
 
@@ -57,8 +58,8 @@ public class Agent {
     /** 用户传入的流式输出监听器。不可为 null；默认为 NO_OP。 */
     private LlmClient.StreamListener userStreamListener = LlmClient.StreamListener.NO_OP;
 
-    /** 最大 ReAct 循环迭代数，超过即返回错误。 */
-    static final int MAX_ITERATIONS = 10;
+    /** [s13 替换] AgentBudget 取代硬编码 MAX_ITERATIONS。 */
+    private final AgentBudget budget = new AgentBudget();
 
     /**
      * 使用默认 ToolRegistry 构造 Agent。
@@ -161,6 +162,9 @@ public class Agent {
      * @throws IOException LLM 调用或工具执行中的 IO 异常
      */
     public String run(String userInput) throws IOException {
+        // [s13 新增] 注册取消令牌
+        var token = CancellationContext.startRun();
+        try {
         String explicitFact = ExplicitMemoryHints.extractFact(userInput);
         if (explicitFact != null) {
             memoryManager.saveFact(explicitFact, "project");
@@ -171,7 +175,23 @@ public class Agent {
 
         StreamRenderer streamRenderer = new StreamRenderer();
 
-        for (int i = 0; i < MAX_ITERATIONS; i++) {
+        // [s13 改造] AgentBudget 替换硬编码 MAX_ITERATIONS
+        while (true) {
+            // [s13] 取消检查
+            if (CancellationContext.isCancelled()) {
+                streamRenderer.finish();
+                return "⏹️ 已取消当前任务。";
+            }
+
+            // [s13] 预算检查
+            AgentBudget.ExitReason exitReason = budget.check();
+            if (exitReason != AgentBudget.ExitReason.WITHIN_BUDGET) {
+                streamRenderer.finish();
+                return budget.describeExit(exitReason);
+            }
+
+            budget.beginIteration();
+
             // [s09 新增] Token 压缩检查
             if (tokenBudget.needsCompression(memoryManager.getConversationMemory(), 0.90)) {
                 compactor.compactIfNeeded(conversationHistory,
@@ -183,10 +203,13 @@ public class Agent {
                     (hitlRegistry != null ? hitlRegistry.delegate().getToolDefinitions() : toolRegistry.getToolDefinitions()),
                     streamRenderer
             );
-            // [s08 回填] 将 LLM 返回的 reasoning 写入诊断日志
-            LlmTraceLogger.logReasoning(LOG, "react iteration=" + i, llmClient, response.reasoningContent());
+            LlmTraceLogger.logReasoning(LOG, "react iteration=" + budget.iteration(), llmClient, response.reasoningContent());
 
-            // [s09 新增] 记录 Token 消耗并展示统计
+            // [s13] 记录 Token 到 AgentBudget
+            budget.recordTokens(response.inputTokens(), response.outputTokens(),
+                    response.cachedInputTokens());
+
+            // [s09 新增] Token 统计展示
             tokenBudget.recordUsage(response.inputTokens(), response.outputTokens(),
                     response.cachedInputTokens());
             System.out.println(TokenUsageFormatter.format(llmClient, tokenBudget,
@@ -194,20 +217,20 @@ public class Agent {
 
             if (response.hasToolCalls()) {
                 // ---- 工具调用分支 ----
-                // 1. 追加 assistant 消息（含 reasoning、content 和 toolCalls）
+                // [s13] 记录工具调用以检测停滞
+                budget.recordToolCalls(response.toolCalls());
+
                 conversationHistory.add(LlmClient.Message.assistant(
                         response.reasoningContent(),
                         response.content(),
                         response.toolCalls()
                 ));
 
-                // 2. 执行工具 [s05 修改] 优先走 HITL 审批链
                 var invocations = toolRegistry.convertToolCalls(response.toolCalls());
                 var results = hitlRegistry != null
                         ? hitlRegistry.executeTools(invocations)
                         : toolRegistry.executeTools(invocations);
 
-                // 3. 追加 tool 结果消息
                 for (var result : results) {
                     conversationHistory.add(LlmClient.Message.tool(result.id(), result.result()));
                     memoryManager.addToolResult(result.result());
@@ -229,9 +252,9 @@ public class Agent {
                 );
             }
         }
-
-        // 超过最大迭代次数
-        return "已达最大迭代次数（" + MAX_ITERATIONS + "），无法在预算内完成请求。s13 加入可配置预算。";
+        } finally {
+            CancellationContext.clear(token);
+        }
     }
 
     /**

@@ -1,6 +1,7 @@
 package ouccs.smy.paiclilearn.cli;
 
 import ouccs.smy.paiclilearn.agent.Agent;
+import ouccs.smy.paiclilearn.agent.AgentOrchestrator;  // [s12 新增] Multi-Agent 编排器
 import ouccs.smy.paiclilearn.hitl.HitlToolRegistry;
 import ouccs.smy.paiclilearn.hitl.TerminalHitlHandler;
 import ouccs.smy.paiclilearn.llm.LlmClient;
@@ -8,6 +9,8 @@ import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
 import ouccs.smy.paiclilearn.memory.MemoryManager;
+import ouccs.smy.paiclilearn.runtime.CancellationContext;  // [s13 新增]
+import ouccs.smy.paiclilearn.runtime.CancellationToken;   // [s13 新增]
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
 import java.util.Scanner;
@@ -47,8 +50,8 @@ public class Main {
         Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v8 (Chapter 08 - 短期与长期记忆)");
-        System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /clear | /exit");
+        System.out.println("PaiCLI 教学版 v12 (Chapter 12 - Multi-Agent 团队协作)");
+        System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /team | /clear | /exit");
 
         Scanner scanner = new Scanner(System.in);
         while (true) {
@@ -126,6 +129,37 @@ public class Main {
                         default -> System.out.println("用法: /memory list|search <关键词>|delete <id>|clear");
                     }
                     System.out.println();
+                    continue;
+                }
+                // ---- [s12 新增] Multi-Agent 团队协作 ----
+                case SWITCH_TEAM -> {
+                    String goal = parsed.payload();
+                    if (goal == null || goal.isBlank()) {
+                        System.out.println("用法: /team <任务描述>\n");
+                        continue;
+                    }
+                    // s12: AgentOrchestrator 用 Planner→Worker→Reviewer 协作
+                    var orchestrator = new AgentOrchestrator(llmClient, toolRegistry);
+                    System.out.println("Multi-Agent 团队启动...");
+                    try {
+                        String result = orchestrator.run(goal);
+                        System.out.println(result);
+                    } catch (Exception e) {
+                        System.err.println("团队协作异常: " + e.getMessage());
+                        LOG.error("AgentOrchestrator 执行异常", e);
+                    }
+                    System.out.println();
+                    continue;
+                }
+                // ---- [s13 新增] 取消当前运行任务 ----
+                case CANCEL -> {
+                    CancellationToken token = CancellationContext.current();
+                    if (token != null) {
+                        token.cancel();
+                        System.out.println("已发出取消信号。\n");
+                    } else {
+                        System.out.println("当前没有正在运行的任务。\n");
+                    }
                     continue;
                 }
                 // ---- [s06 新增] 未知 /xxx → CLI 层直接拒绝 ----

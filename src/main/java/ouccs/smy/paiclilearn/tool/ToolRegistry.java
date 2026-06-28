@@ -10,8 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import ouccs.smy.paiclilearn.runtime.CancellationContext;  // [s13 新增] 取消检查
 
 /**
  * 工具注册中心——本章（s04）注册四个只读文件工具。
@@ -130,31 +130,114 @@ public class ToolRegistry {
         }
     }
 
+    // [s13 新增] 并行执行配置
+    private static final int MAX_PARALLEL_TOOLS = 4;
+    private static final int TOOL_BATCH_TIMEOUT_SECONDS = 60;
+
     /**
-     * 批量执行工具调用（同步顺序执行，并行在 s13 引入）。
+     * [s13 改造] 并行执行同一轮 LLM 返回的多个工具调用。
+     * <p>
+     * 结果按传入顺序返回，调用方可以安全地按原 tool_call 顺序回灌消息历史。
+     * 单工具调用直接同步执行（避免线程开销）；多工具调用使用线程池并行。
+     * 任何工具执行前先检查 CancellationContext.isCancelled()。
+     * </p>
      */
     public List<ToolExecutionResult> executeTools(List<ToolInvocation> invocations) {
-        List<ToolExecutionResult> results = new ArrayList<>();
-        for (ToolInvocation inv : invocations) {
+        if (invocations == null || invocations.isEmpty()) {
+            return List.of();
+        }
+        // [s13] 取消检查——所有工具在执行前先确认未被取消
+        if (CancellationContext.isCancelled()) {
+            return invocations.stream()
+                    .map(inv -> ToolExecutionResult.failed(inv, "用户取消了此次工具调用", 0))
+                    .toList();
+        }
+        // 单工具调用：直接同步执行，避免线程池开销
+        if (invocations.size() == 1) {
+            ToolInvocation inv = invocations.get(0);
             long start = System.currentTimeMillis();
             Tool tool = tools.get(inv.name());
             if (tool == null) {
-                results.add(ToolExecutionResult.failed(inv,
+                return List.of(ToolExecutionResult.failed(inv,
                         "工具 '" + inv.name() + "' 未注册",
                         System.currentTimeMillis() - start));
-                continue;
             }
             try {
                 Map<String, String> args = parseArgs(inv.argumentsJson());
                 String result = tool.executor().execute(args);
-                results.add(ToolExecutionResult.completed(inv, result,
+                return List.of(ToolExecutionResult.completed(inv, result,
                         System.currentTimeMillis() - start));
             } catch (Exception e) {
-                results.add(ToolExecutionResult.failed(inv, e.getMessage(),
+                return List.of(ToolExecutionResult.failed(inv, e.getMessage(),
                         System.currentTimeMillis() - start));
             }
         }
-        return results;
+
+        // [s13] 多工具并行执行——最多 4 线程，60 秒超时
+        int parallelism = Math.min(invocations.size(), MAX_PARALLEL_TOOLS);
+        ExecutorService executor = Executors.newFixedThreadPool(parallelism, r -> {
+            Thread thread = new Thread(r, "paicli-tool-executor");
+            thread.setDaemon(true);
+            return thread;
+        });
+
+        try {
+            List<Callable<ToolExecutionResult>> tasks = invocations.stream()
+                    .<Callable<ToolExecutionResult>>map(inv -> () -> {
+                        if (CancellationContext.isCancelled()) {
+                            return ToolExecutionResult.failed(inv, "用户取消了此次工具调用", 0);
+                        }
+                        long start = System.currentTimeMillis();
+                        Tool tool = tools.get(inv.name());
+                        if (tool == null) {
+                            return ToolExecutionResult.failed(inv,
+                                    "工具 '" + inv.name() + "' 未注册",
+                                    System.currentTimeMillis() - start);
+                        }
+                        try {
+                            Map<String, String> args = parseArgs(inv.argumentsJson());
+                            String result = tool.executor().execute(args);
+                            return ToolExecutionResult.completed(inv, result,
+                                    System.currentTimeMillis() - start);
+                        } catch (Exception e) {
+                            return ToolExecutionResult.failed(inv, e.getMessage(),
+                                    System.currentTimeMillis() - start);
+                        }
+                    })
+                    .toList();
+
+            List<Future<ToolExecutionResult>> futures =
+                    executor.invokeAll(tasks, TOOL_BATCH_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+            List<ToolExecutionResult> results = new ArrayList<>();
+            for (int i = 0; i < futures.size(); i++) {
+                ToolInvocation inv = invocations.get(i);
+                Future<ToolExecutionResult> future = futures.get(i);
+                if (future.isCancelled()) {
+                    results.add(ToolExecutionResult.timedOut(inv, TOOL_BATCH_TIMEOUT_SECONDS));
+                    continue;
+                }
+                try {
+                    results.add(future.get());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    results.add(ToolExecutionResult.failed(inv, "工具执行被中断", 0));
+                } catch (ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    String message = cause == null || cause.getMessage() == null
+                            ? "未知错误" : cause.getMessage();
+                    results.add(ToolExecutionResult.failed(inv, message, 0));
+                }
+            }
+            return results;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return invocations.stream()
+                    .map(inv -> ToolExecutionResult.failed(inv, "工具批次执行被中断", 0))
+                    .toList();
+        } finally {
+            executor.shutdownNow();
+        }
     }
 
     // ========== 工具注册（只读文件工具） ==========

@@ -16,6 +16,8 @@ public final class CliCommandParser {
         SWITCH_MODEL,      // /model [provider] — 切换模型
         SAVE_MEMORY,       // /save [global] <内容> — 显式保存长期记忆
         MEMORY,            // /memory list|search|delete|clear — 管理长期记忆
+        SWITCH_TEAM,       // [s12 新增] /team — Multi-Agent 团队协作
+        CANCEL,            // [s13 新增] /cancel — 取消当前运行任务
         EXIT               // /exit — 退出
     }
 
@@ -69,6 +71,19 @@ public final class CliCommandParser {
         }
         if (trimmed.regionMatches(true, 0, "/memory ", 0, 8)) {
             return new ParsedCommand(CommandType.MEMORY, trimmed.substring(8).trim());
+        }
+
+        // ---- [s12 新增] /team — Multi-Agent 团队协作 ----
+        if (trimmed.equalsIgnoreCase("/team")) {
+            return new ParsedCommand(CommandType.SWITCH_TEAM, "");
+        }
+        if (trimmed.regionMatches(true, 0, "/team ", 0, 6)) {
+            return new ParsedCommand(CommandType.SWITCH_TEAM, trimmed.substring(6).trim());
+        }
+
+        // ---- [s13 新增] /cancel — 取消当前运行任务 ----
+        if (trimmed.equalsIgnoreCase("/cancel")) {
+            return new ParsedCommand(CommandType.CANCEL, null);
         }
 
         // ---- /xxx 未识别 → 直接拒绝 ----
