@@ -10,6 +10,7 @@ class TokenBudgetTest {
 
     @Test void availableBudgetDeductsReservations() {
         var budget = new TokenBudget(128000, 500, 800, 2000);
+        assertEquals(128000, budget.contextWindow());
         assertEquals(128000 - 500 - 800 - 2000, budget.getAvailableForConversation());
     }
 

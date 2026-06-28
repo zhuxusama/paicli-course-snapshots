@@ -23,12 +23,12 @@ import java.util.Objects;
 public class MemoryManager {
     private static final Logger log = LoggerFactory.getLogger(MemoryManager.class);
 
-    private final ConversationMemory shortTerm;
-    private final LongTermMemory longTerm;
-    private final ContextCompressor compressor;
-    private final MemoryRetriever retriever;
-    private TokenBudget tokenBudget;
-    private final String projectKey;
+    private final ConversationMemory shortTerm;   // 进程内短期记忆，LinkedHashMap 存储，按 token 预算驱逐
+    private final LongTermMemory longTerm;        // 项目长期记忆，文件存储，按项目分隔
+    private final ContextCompressor compressor;   // MAP-REDUCE 压缩器，持有 LlmClient 引用用于 LLM 摘要
+    private final MemoryRetriever retriever;      // 记忆检索器，负责根据项目键检索记忆
+    private TokenBudget tokenBudget;              // token 预算，负责管理短期记忆的 token 占用
+    private final String projectKey;              // 项目键，用于唯一标识项目，避免冲突
 
     /** 压缩触发阈值——短期记忆 token 占用率超过此比例时触发压缩。 */
     private static final double COMPRESSION_TRIGGER_RATIO = 0.9;
