@@ -11,6 +11,7 @@ import ouccs.smy.paiclilearn.llm.LlmClient;
  *
  * @since s09
  */
+/** [s09 新增] */
 public record ContextProfile(
         int maxContextWindow,
         int agentTokenBudget,

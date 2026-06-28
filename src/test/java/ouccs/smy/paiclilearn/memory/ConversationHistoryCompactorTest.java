@@ -34,12 +34,18 @@ class ConversationHistoryCompactorTest {
                 LlmClient.Message.user("最新问题"),
                 LlmClient.Message.assistant("最新回答")
         ));
-        // 估算约 6250+ token，触发阈值 2000
         int tokens = TokenBudget.estimateMessagesTokens(history);
         boolean compressed = compactor.compactIfNeeded(history, tokens - 100);
-        // 压缩可能因 summarize 异常、边界不足等原因跳过，不强制成功
-        // 但至少 verify 估算逻辑正确
+
         assertTrue(tokens > 2000, "5000 字符消息的 token 估算应 > 2000, 实际: " + tokens);
+        assertTrue(compressed);
+        assertEquals("system", history.get(0).role());
+        assertEquals("你是助手", history.get(0).content());
+        assertEquals("user", history.get(1).role());
+        assertTrue(history.get(1).content().contains("这是摘要"));
+        assertEquals("assistant", history.get(2).role());
+        assertTrue(history.get(3).content().startsWith("C"));
+        assertTrue(history.get(5).content().startsWith("最新问题"));
     }
 
     @Test void retainRecentRoundsKeepsLastMessages() {
@@ -53,8 +59,12 @@ class ConversationHistoryCompactorTest {
                 LlmClient.Message.assistant("D".repeat(8000))
         ));
         int tokens = TokenBudget.estimateMessagesTokens(history);
-        // 验证估算逻辑本身
-        assertTrue(tokens > 3000, "4 条 8000 字符消息估算应 > 3000, 实际: " + tokens);
+        boolean compressed = compactor.compactIfNeeded(history, tokens - 100);
+
+        assertTrue(compressed);
+        assertEquals("system", history.get(0).role());
+        assertTrue(history.get(1).content().contains("summary"));
+        assertEquals("C".repeat(8000), history.get(history.size() - 2).content());
     }
 
     // ========== Stub ==========

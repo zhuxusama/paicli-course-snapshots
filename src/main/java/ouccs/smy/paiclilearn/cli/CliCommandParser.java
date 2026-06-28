@@ -14,6 +14,8 @@ public final class CliCommandParser {
         UNKNOWN_COMMAND,   // 未识别的 /xxx → CLI 层直接报错
         CLEAR,             // /clear — 清空对话历史
         SWITCH_MODEL,      // /model [provider] — 切换模型
+        // [s08 新增] 记忆保存与管理命令
+        // [s08 新增] 解析 /save 和 /memory 命令
         SAVE_MEMORY,       // /save [global] <内容> — 显式保存长期记忆
         MEMORY,            // /memory list|search|delete|clear — 管理长期记忆
         EXIT               // /exit — 退出
@@ -55,11 +57,14 @@ public final class CliCommandParser {
                     trimmed.substring(modelPrefix.length() + 1).trim());
         }
 
+        // [s08 新增] 解析 /save 和 /memory 命令
         // ---- /save [global] <内容> ----
         if (trimmed.equalsIgnoreCase("/save")) {
+        // [s08 新增] 记忆保存与管理命令
             return new ParsedCommand(CommandType.SAVE_MEMORY, "");
         }
         if (trimmed.regionMatches(true, 0, "/save ", 0, 6)) {
+        // [s08 新增] 记忆保存与管理命令
             return new ParsedCommand(CommandType.SAVE_MEMORY, trimmed.substring(6).trim());
         }
 
