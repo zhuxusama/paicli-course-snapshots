@@ -80,7 +80,6 @@ public class ConversationMemory implements Memory {
         compressedSummaries.clear();
     }
 
-    @Override
     public int getTokenCount() {
         return currentTokens;
     }
