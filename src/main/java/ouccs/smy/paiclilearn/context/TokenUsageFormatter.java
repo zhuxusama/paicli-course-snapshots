@@ -2,6 +2,7 @@ package ouccs.smy.paiclilearn.context;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
 import ouccs.smy.paiclilearn.memory.TokenBudget;
+import ouccs.smy.paiclilearn.util.AnsiStyle;
 
 /**
  * Token 用量格式化工具——在终端显示模型上下文占用和预估费用。
@@ -47,7 +48,7 @@ public final class TokenUsageFormatter {
             sb.append(" | ").append(elapsed).append("ms");
         }
 
-        return sb.toString();
+        return AnsiStyle.subtle(sb.toString());
     }
 
     /**
