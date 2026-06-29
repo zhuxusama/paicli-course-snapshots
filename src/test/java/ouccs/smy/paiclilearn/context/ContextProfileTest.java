@@ -42,7 +42,8 @@ class ContextProfileTest {
             @Override public int maxContextWindow() { return 1000; }
         };
         var profile = ContextProfile.from(client);
-        assertEquals(4000, profile.agentTokenBudget(), "小型窗口也应有最小预算");
+        assertEquals(8000, profile.maxContextWindow(), "源码会把过小窗口抬升到 MIN_WINDOW");
+        assertEquals(6400, profile.agentTokenBudget(), "最小窗口仍按 80% 派生 agent 预算");
     }
 
     static class StubLlmClient implements LlmClient {

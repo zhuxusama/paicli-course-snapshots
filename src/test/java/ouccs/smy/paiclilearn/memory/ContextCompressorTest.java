@@ -44,6 +44,27 @@ class ContextCompressorTest {
         assertEquals("消息 8", entries.get(3).content());
     }
 
+    @Test void extractFactsStoresOnlyDurableFactsWhenCalledExplicitly() {
+        var client = new ExtractFactsLlmClient("""
+                项目构建必须使用 Java 17
+                用户想让我现在修一个 bug
+                可能需要换数据库
+                """);
+        var compressor = new ContextCompressor(client, 3);
+        var longTermMemory = LongTermMemory.inMemory();
+        var entries = List.of(
+                MemoryEntry.message("项目约定：构建必须使用 Java 17", MemoryEntry.MemoryType.USER, "p"),
+                MemoryEntry.message("临时任务：现在修一个 bug", MemoryEntry.MemoryType.ASSISTANT, "p")
+        );
+
+        List<String> facts = compressor.extractFacts(entries, longTermMemory);
+
+        assertEquals(List.of("项目构建必须使用 Java 17"), facts);
+        assertEquals(1, longTermMemory.size());
+        assertEquals("项目构建必须使用 Java 17", longTermMemory.getAll().get(0).content());
+        assertEquals(1, client.calls);
+    }
+
     private static final class CountingLlmClient implements LlmClient {
         private final String response;
         private int calls;
@@ -61,6 +82,26 @@ class ContextCompressorTest {
         }
 
         @Override public String getModelName() { return "test-real-boundary"; }
+        @Override public String getProviderName() { return "test"; }
+    }
+
+    private static final class ExtractFactsLlmClient implements LlmClient {
+        private final String response;
+        private int calls;
+
+        private ExtractFactsLlmClient(String response) {
+            this.response = response;
+        }
+
+        @Override public ChatResponse chat(List<Message> messages, List<Tool> tools,
+                                           StreamListener listener) throws IOException {
+            calls++;
+            assertEquals("system", messages.get(0).role());
+            assertTrue(messages.get(1).content().contains("事实"));
+            return new ChatResponse("assistant", response, null, null, 0, 0, 0);
+        }
+
+        @Override public String getModelName() { return "test-extract-facts"; }
         @Override public String getProviderName() { return "test"; }
     }
 }
