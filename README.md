@@ -281,16 +281,16 @@ s08 解决了"记住什么"；s09 解决"在窗口有限的情况下，哪些东
 
 ## 和原项目还差什么
 
-| 方面 | 原项目 | 本节实现 |
-|---|---|---|
-| 预算模型 | LLM API 返回的真实 token 数 + prompt caching 命中率 | 字符 / 3.5（EN）或 /1.5（CJK）估算 |
-| 压缩触发 | ContextMode 动态切换（COMPACT/BALANCED/FULL_CONTEXT） | 固定 90% 单一阈值 |
-| 摘要质量 | 专用 system prompt + 多轮压缩层次 + 关键信息保留策略 | 简单 "用一句话概括" prompt |
-| 状态行 | JLine Status 托管的底部 dock | System.out.println 每轮一行 |
-| 预算可视化 | ctx 百分比实时更新 + 剩余 token 预估 | 每轮结束后静态打印 |
-| 停滞检测 | 连续 N 轮内容相似度分析 | 未实现，s13 AgentBudget 加入 |
+| 方面 | 原项目 | 本节实现 | 后续状态 |
+|---|---|---|---|
+| 预算模型 | LLM API 返回的真实 token 数 + prompt caching 命中率 | 字符 / 3.5（EN）或 /1.5（CJK）估算，并在 `recordUsage()` 中保留真实 input/output/cache 入口 | s09 已打通基础链路；后续 provider / 状态栏章节继续把真实 token 与缓存命中展示得更完整 |
+| 压缩触发 | ContextMode 动态切换（COMPACT/BALANCED/FULL_CONTEXT） | 固定 90% 单一阈值 | 已补入 SQLite 计划：`CTX-005`，后续在上下文策略与渲染集成阶段补齐 |
+| 摘要质量 | 专用 system prompt + 多轮压缩层次 + 关键信息保留策略 | history 压缩使用简化 prompt；短期记忆压缩已使用 MAP-REDUCE | 已补入 SQLite 计划：`CTX-006`，后续补专用压缩 prompt 与分层摘要策略 |
+| 状态行 | JLine Status 托管的底部 dock | System.out.println 每轮一行 | 已在后续渲染章节计划中跟踪：s27 `RENDER-*` / s28 `CLI-*` |
+| 预算可视化 | ctx 百分比实时更新 + 剩余 token 预估 | 每轮结束后静态打印 | 已在后续渲染章节计划中跟踪：s27/s28 |
+| 停滞检测 | 连续 N 轮内容相似度分析 | s09 未做 | 已在 s13 `AgentBudget` 补齐为迭代 / token / 停滞三重预算检查 |
 
-这些差距是刻意的——本章聚焦于"token 预算 + 压缩"的核心机制，UI 渲染和高级压缩策略属于后续章节的职责。
+这些差距不是遗漏，而是分层教学的边界：s09 只交付"token 预算 + 压缩触发 + 可运行压缩链路"；高级上下文策略、状态栏实时展示和停滞预算分别交给后续章节，并在 `course-state.sqlite` 中可追踪。
 
 ---
 
