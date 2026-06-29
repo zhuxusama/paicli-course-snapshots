@@ -1,10 +1,13 @@
 package ouccs.smy.paiclilearn.memory;
 
 import ouccs.smy.paiclilearn.llm.LlmClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 对话历史压缩器：当对话即将超过模型窗口时，把中间轮次的
@@ -21,8 +24,22 @@ import java.util.List;
  *
  * @since s09
  */
-/** [s09 新增] */
 public class ConversationHistoryCompactor {
+    private static final Logger log = LoggerFactory.getLogger(ConversationHistoryCompactor.class);
+    private static final int MAX_SUMMARY_INPUT_CHARS = 60_000;
+    private static final String SUMMARY_PROMPT = """
+            请把下面的旧对话压缩成可供后续任务继续使用的摘要，保留：
+            1. 用户目标、数值目标和明确约束
+            2. 已达成的决策、允许/禁止事项
+            3. 已执行的关键命令、工具、文件和核心结果
+            4. 错误、失败原因、验证结论和仍未完成的待办
+
+            不要复述无关闲聊，不要虚构未出现的信息。输出简洁中文摘要。
+
+            === 待压缩历史（已按角色有界采样）===
+            %s
+            === 待压缩历史结束 ===
+            """;
     private LlmClient llmClient;
     private final int retainRecentRounds;
 
@@ -37,7 +54,7 @@ public class ConversationHistoryCompactor {
 
     public ConversationHistoryCompactor(LlmClient llmClient, int retainRecentRounds) {
         this.llmClient = llmClient;
-        this.retainRecentRounds = retainRecentRounds;
+        this.retainRecentRounds = Math.max(1, retainRecentRounds);
     }
 
     /**
@@ -67,12 +84,17 @@ public class ConversationHistoryCompactor {
             if (summary == null || summary.isBlank()) return false;
             history.clear();
             if (system != null) history.add(system);
-            history.add(LlmClient.Message.user("[已压缩] " + summary));
+            history.add(LlmClient.Message.user("[已压缩] " + summary.trim()));
             // 尾部 + 辅助确认
             history.add(LlmClient.Message.assistant("好的，已理解前面的对话摘要。"));
             history.addAll(tail);
+            int afterTokens = TokenBudget.estimateMessagesTokens(history);
+            log.info("conversationHistory 压缩完成: tokens {} -> {}, messages {} -> {}, summaryChars={}",
+                    estimated, afterTokens, toCompress.size() + tail.size() + (system == null ? 0 : 1),
+                    history.size(), summary.length());
             return true;
         } catch (Exception e) {
+            log.warn("conversationHistory 摘要失败，本轮保留原历史", e);
             return false;
         }
     }
@@ -95,29 +117,69 @@ public class ConversationHistoryCompactor {
 
     /** 调用真实 LLM 生成摘要。 */
     protected String summarize(List<LlmClient.Message> messages) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        for (var msg : messages) {
-            sb.append("[").append(msg.role()).append("] ");
-            if (msg.content() != null && !msg.content().isBlank()) {
-                String truncated = msg.content().length() > 2000
-                        ? msg.content().substring(0, 2000) + "..." : msg.content();
-                sb.append(truncated);
-            }
-            if (msg.toolCalls() != null && !msg.toolCalls().isEmpty()) {
-                sb.append(" [调用了 ").append(msg.toolCalls().size()).append(" 个工具]");
-            }
-            sb.append("\\n");
-        }
-        String text = sb.toString();
-        if (text.length() > 60000) text = text.substring(0, 60000);
+        if (llmClient == null) throw new IOException("LLM client not configured");
+        String text = buildBalancedSummaryInput(messages);
 
         var response = llmClient.chat(
                 List.of(
-                        LlmClient.Message.system("请用一句话概括以下对话的关键信息和决策。"),
-                        LlmClient.Message.user(text)
+                        LlmClient.Message.system("你是对话压缩助手，只输出忠实摘要。"),
+                        LlmClient.Message.user(String.format(SUMMARY_PROMPT, text))
                 ),
                 List.of()
         );
         return response.content() != null ? response.content() : "";
+    }
+
+    /**
+     * 在固定 60k 字符预算内覆盖整段旧历史，而不是只保留开头。
+     * user 权重最高，assistant 次之，tool 结果最低；每条长消息同时采样头尾。
+     */
+    private static String buildBalancedSummaryInput(List<LlmClient.Message> messages) {
+        if (messages.isEmpty()) return "";
+        int overhead = messages.stream().mapToInt(msg -> msg.role().length() + 5).sum();
+        int contentBudget = Math.max(messages.size(), MAX_SUMMARY_INPUT_CHARS - overhead);
+        int totalWeight = messages.stream().mapToInt(ConversationHistoryCompactor::weight).sum();
+        double unit = contentBudget / (double) Math.max(1, totalWeight);
+
+        StringBuilder result = new StringBuilder(MAX_SUMMARY_INPUT_CHARS);
+        for (LlmClient.Message message : messages) {
+            String prefix = "[" + message.role().toUpperCase(Locale.ROOT) + "] ";
+            int remaining = MAX_SUMMARY_INPUT_CHARS - result.length();
+            if (remaining <= prefix.length() + 1) break;
+            int allocated = Math.max(1, (int) Math.floor(unit * weight(message)));
+            allocated = Math.min(allocated, remaining - prefix.length() - 1);
+            result.append(prefix).append(abbreviate(semanticText(message), allocated)).append('\n');
+        }
+        return result.toString();
+    }
+
+    private static int weight(LlmClient.Message message) {
+        return switch (message.role()) {
+            case "user" -> 4;
+            case "system", "assistant" -> 2;
+            case "tool" -> 1;
+            default -> 1;
+        };
+    }
+
+    private static String semanticText(LlmClient.Message message) {
+        StringBuilder text = new StringBuilder();
+        if (message.content() != null) text.append(message.content());
+        if (message.toolCalls() != null) {
+            for (LlmClient.ToolCall call : message.toolCalls()) {
+                text.append(" TOOL_CALL ").append(call.function().name()).append(' ')
+                        .append(call.function().arguments());
+            }
+        }
+        if (message.toolCallId() != null) text.append(" TOOL_RESULT_FOR ").append(message.toolCallId());
+        return text.toString().replaceAll("\\s+", " ").trim();
+    }
+
+    private static String abbreviate(String text, int budget) {
+        if (text.length() <= budget) return text;
+        if (budget <= 5) return text.substring(0, Math.max(0, budget));
+        int head = (budget - 1) / 2;
+        int tail = budget - head - 1;
+        return text.substring(0, head) + "…" + text.substring(text.length() - tail);
     }
 }
