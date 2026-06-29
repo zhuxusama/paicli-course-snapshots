@@ -1,5 +1,7 @@
 package ouccs.smy.paiclilearn.memory;
 
+import ouccs.smy.paiclilearn.llm.LlmClient;
+
 import java.util.List;
 
 /**
@@ -42,7 +44,7 @@ public class TokenBudget {
     }
 
     /** 消息列表是否在预算内。 */
-    public boolean isWithinBudget(List<ouccs.smy.paiclilearn.llm.LlmClient.Message> messages) {
+    public boolean isWithinBudget(List<LlmClient.Message> messages) {
         int estimated = estimateMessagesTokens(messages);
         return estimated <= getAvailableForConversation();
     }
@@ -56,16 +58,27 @@ public class TokenBudget {
         return total >= getAvailableForConversation() * triggerRatio;
     }
 
+    /** 兼容源码默认触发率：短期记忆达到 90% 可用预算时需要压缩。 */
+    public boolean needsCompression(ConversationMemory memory) {
+        return needsCompression(memory, 0.9);
+    }
+
+    /** 兼容不区分 cached input 的调用路径。 */
+    public void recordUsage(int inputTokens, int outputTokens) {
+        recordUsage(inputTokens, outputTokens, 0);
+    }
+
     /** 记录一次 LLM 调用的 token 消耗。 */
     public void recordUsage(int inputTokens, int outputTokens, int cachedInputTokens) {
         this.totalInputTokens += inputTokens;
         this.totalOutputTokens += outputTokens;
-        this.totalCachedInputTokens += cachedInputTokens;
+        this.totalCachedInputTokens += Math.max(0, cachedInputTokens);
         this.llmCallCount++;
     }
 
-    /** 对 {@link ouccs.smy.paiclilearn.llm.LlmClient.Message} 列表做线性 token 估算。 */
-    public static int estimateMessagesTokens(List<ouccs.smy.paiclilearn.llm.LlmClient.Message> messages) {
+    /** 对 {@link LlmClient.Message} 列表做线性 token 估算。 */
+    public static int estimateMessagesTokens(List<LlmClient.Message> messages) {
+        if (messages == null) return 0;
         int total = 0;
         for (var msg : messages) {
             if (msg.content() != null) total += estimateTextTokens(msg.content());
@@ -96,6 +109,11 @@ public class TokenBudget {
     public int totalOutputTokens() { return totalOutputTokens; }
     public int totalCachedInputTokens() { return totalCachedInputTokens; }
     public int llmCallCount() { return llmCallCount; }
+    public int getContextWindow() { return contextWindow; }
+    public int getTotalInputTokens() { return totalInputTokens; }
+    public int getTotalOutputTokens() { return totalOutputTokens; }
+    public int getTotalCachedInputTokens() { return totalCachedInputTokens; }
+    public int getLlmCallCount() { return llmCallCount; }
     public void reset() { totalInputTokens = totalOutputTokens = totalCachedInputTokens = 0; llmCallCount = 0; }
 
     /** [s09 新增] 用量报告，供 getSystemStatus 使用。 */
