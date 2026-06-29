@@ -25,7 +25,9 @@ import java.util.Locale;
  * @since s09
  */
 public class ConversationHistoryCompactor {
+    // 与 ContextCompressor 分工：ContextCompressor 处理短期记忆条目，本类处理发给 LLM 的 conversationHistory。
     private static final Logger log = LoggerFactory.getLogger(ConversationHistoryCompactor.class);
+    private static final int DEFAULT_RETAIN_RECENT_ROUNDS = 3;
     private static final int MAX_SUMMARY_INPUT_CHARS = 60_000;
     private static final String SUMMARY_PROMPT = """
             请把下面的旧对话压缩成可供后续任务继续使用的摘要，保留：
@@ -49,7 +51,7 @@ public class ConversationHistoryCompactor {
     }
 
     public ConversationHistoryCompactor(LlmClient llmClient) {
-        this(llmClient, 3);
+        this(llmClient, DEFAULT_RETAIN_RECENT_ROUNDS);
     }
 
     public ConversationHistoryCompactor(LlmClient llmClient, int retainRecentRounds) {
@@ -65,8 +67,8 @@ public class ConversationHistoryCompactor {
      */
     public boolean compactIfNeeded(List<LlmClient.Message> history, int triggerTokens) {
         if (history == null || history.size() < 3) return false;
-        int estimated = TokenBudget.estimateMessagesTokens(history);
-        if (estimated < triggerTokens) return false;
+        int currentTokens = TokenBudget.estimateMessagesTokens(history);
+        if (currentTokens < triggerTokens) return false;
 
         // 找到可以压缩的用户消息边界
         int compressEnd = findCompressBoundary(history);
@@ -90,7 +92,7 @@ public class ConversationHistoryCompactor {
             history.addAll(tail);
             int afterTokens = TokenBudget.estimateMessagesTokens(history);
             log.info("conversationHistory 压缩完成: tokens {} -> {}, messages {} -> {}, summaryChars={}",
-                    estimated, afterTokens, toCompress.size() + tail.size() + (system == null ? 0 : 1),
+                    currentTokens, afterTokens, toCompress.size() + tail.size() + (system == null ? 0 : 1),
                     history.size(), summary.length());
             return true;
         } catch (Exception e) {
@@ -116,6 +118,11 @@ public class ConversationHistoryCompactor {
     }
 
     /** 调用真实 LLM 生成摘要。 */
+    /** [s09 鏂板] 淇濈暀鏈€杩戝嚑杞師濮嬪璇濓紝渚涘璁″拰娴嬭瘯纭鍘嬬缉杈圭晫銆? */
+    public int retainRecentRounds() {
+        return retainRecentRounds;
+    }
+
     protected String summarize(List<LlmClient.Message> messages) throws IOException {
         if (llmClient == null) throw new IOException("LLM client not configured");
         String text = buildBalancedSummaryInput(messages);

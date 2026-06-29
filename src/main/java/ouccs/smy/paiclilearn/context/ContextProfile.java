@@ -22,26 +22,44 @@ public record ContextProfile(
         boolean promptCachingSupported,
         String promptCacheMode
 ) {
+    public static final double DEFAULT_COMPRESSION_TRIGGER_RATIO = 0.90;
+    private static final int MIN_WINDOW = 8_000;
+    private static final int MCP_RESOURCE_INDEX_MIN_WINDOW = 32_000;
+
     /** 从真实 LLM 客户端创建配置画像。 */
     public static ContextProfile from(LlmClient llmClient) {
-        int window = llmClient.maxContextWindow();
+        int window = Math.max(MIN_WINDOW, llmClient == null ? 128_000 : llmClient.maxContextWindow());
         int agentBudget = Math.max(4000, (int) (window * 0.8));
         int shortTermBudget = Math.max(4000, (int) (window * 0.45));
         int memoryCtx = Math.max(500, Math.min(5000, window / 200));
-        return new ContextProfile(window, agentBudget, 0.90,
+        return new ContextProfile(window, agentBudget, DEFAULT_COMPRESSION_TRIGGER_RATIO,
                 shortTermBudget, memoryCtx,
-                false, llmClient.supportsPromptCaching(), llmClient.promptCacheMode());
+                window >= MCP_RESOURCE_INDEX_MIN_WINDOW,
+                llmClient != null && llmClient.supportsPromptCaching(),
+                llmClient == null ? "none" : llmClient.promptCacheMode());
     }
 
     /** 自定义窗口和短期预算，其他参数用默认值。 */
     public static ContextProfile custom(int contextWindow, int shortTermMemoryBudget) {
-        return new ContextProfile(contextWindow, Math.max(4000, (int) (contextWindow * 0.8)),
-                0.90, shortTermMemoryBudget, Math.max(500, contextWindow / 200),
-                false, false, "none");
+        int window = Math.max(MIN_WINDOW, contextWindow);
+        return new ContextProfile(window, Math.max(4000, (int) (window * 0.8)),
+                DEFAULT_COMPRESSION_TRIGGER_RATIO, Math.max(1, shortTermMemoryBudget),
+                Math.max(500, Math.min(5000, window / 200)),
+                window >= MCP_RESOURCE_INDEX_MIN_WINDOW, false, "none");
     }
 
     /** 触发压缩的 token 阈值（maxWindow × triggerRatio）。 */
     public int compressionTriggerTokens() {
         return (int) (maxContextWindow * compressionTriggerRatio);
+    }
+
+    /** 给状态栏/日志使用的单行摘要。 */
+    public String summary() {
+        return "window=" + maxContextWindow
+                + ", trigger=" + (int) (compressionTriggerRatio * 100) + "%"
+                + ", shortTerm=" + shortTermMemoryBudget
+                + ", memoryContext=" + memoryContextTokens
+                + ", mcpResourceIndex=" + mcpResourceIndexEnabled
+                + ", promptCache=" + promptCacheMode;
     }
 }

@@ -72,6 +72,7 @@ class ConversationHistoryCompactorTest {
         System.out.println("\n===== 测试：最近轮次保留 =====");
         var client = new StubLlmClient("summary");
         var compactor = new ConversationHistoryCompactor(client, 1); // 只保留 1 轮
+        assertEquals(1, compactor.retainRecentRounds());
         var history = new ArrayList<>(List.of(
                 LlmClient.Message.system("system"),
                 LlmClient.Message.user("A".repeat(8000)),
