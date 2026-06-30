@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s15 RAG 代码切块与关系分析</description>
+    <description>PaiCLI 渐进式构建课程 - s16 Embedding、SQLite 向量库与语义检索</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -57,6 +57,11 @@
             <groupId>com.huaban</groupId>
             <artifactId>jieba-analysis</artifactId>
             <version>1.0.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.xerial</groupId>
+            <artifactId>sqlite-jdbc</artifactId>
+            <version>3.49.1.0</version>
         </dependency>
         <dependency>
             <groupId>com.github.javaparser</groupId>
