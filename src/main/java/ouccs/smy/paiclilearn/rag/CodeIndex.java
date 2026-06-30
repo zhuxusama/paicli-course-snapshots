@@ -23,10 +23,23 @@ public class CodeIndex {
     private final CodeAnalyzer analyzer;
     private final ProgressListener progressListener;
 
+    /**
+     * 索引进度监听器，由 CLI 或测试注入，用来观察长时间索引任务的阶段变化。
+     */
     @FunctionalInterface
     public interface ProgressListener {
+        /**
+         * 接收索引过程中的可展示进度文本。
+         *
+         * @param message 当前进度消息
+         */
         void onProgress(String message);
 
+        /**
+         * 返回一个丢弃所有进度消息的监听器。
+         *
+         * @return no-op listener
+         */
         static ProgressListener noop() {
             return message -> {
             };
@@ -126,6 +139,13 @@ public class CodeIndex {
         progressListener.onProgress(message);
     }
 
+    /**
+     * 索引结果统计。
+     *
+     * @param chunkCount 生成的代码块数量
+     * @param relationCount 提取到的结构关系数量
+     * @param message 面向终端展示的结果摘要
+     */
     public record IndexResult(int chunkCount, int relationCount, String message) {
     }
 }
