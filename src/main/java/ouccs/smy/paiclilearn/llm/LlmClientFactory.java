@@ -11,6 +11,8 @@ public final class LlmClientFactory {
             case "step" -> new StepClient(config.apiKey(), config.model(), config.baseUrl());
             case "kimi" -> new KimiClient(config.apiKey(), config.model(), config.baseUrl());
             case "freellmapi" -> new FreeLlmApiClient(config.apiKey(), config.model(), config.baseUrl());
+            case "agnes" -> new AgnesClient(config.apiKey(), config.model(), config.baseUrl());
+            case "xfyun-maas" -> new XfyunMaaSClient(config.apiKey(), config.model(), config.baseUrl());
             default -> throw new IllegalArgumentException("未知 Provider: " + config.provider());
         };
     }
@@ -21,6 +23,7 @@ public final class LlmClientFactory {
             case "stepfun", "step-fun" -> "step";
             case "moonshot", "moonshotai", "moonshot-ai" -> "kimi";
             case "free-llm-api", "free_llm_api", "freellm", "free-llm" -> "freellmapi";
+            case "xfyun", "xfyun_maas", "xfyunmaas", "iflytek", "spark-maas" -> "xfyun-maas";
             default -> value;
         };
     }
