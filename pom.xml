@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 娓愯繘寮忔瀯寤鸿绋?- s15 RAG 浠ｇ爜鍒囧潡涓庡叧绯诲垎鏋?/description>
+    <description>PaiCLI 渐进式构建课程 - s15 RAG 代码切块与关系分析</description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
