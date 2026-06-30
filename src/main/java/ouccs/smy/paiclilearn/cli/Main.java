@@ -9,10 +9,14 @@ import ouccs.smy.paiclilearn.llm.LlmClientFactory;
 import ouccs.smy.paiclilearn.llm.LlmConfig;
 import ouccs.smy.paiclilearn.llm.LlmTraceLogger;
 import ouccs.smy.paiclilearn.memory.MemoryManager;
+import ouccs.smy.paiclilearn.prompt.ProjectMemoryLoader;
+import ouccs.smy.paiclilearn.prompt.PromptAssembler;
+import ouccs.smy.paiclilearn.prompt.PromptContext;
 import ouccs.smy.paiclilearn.runtime.CancellationContext;  // [s13 新增]
 import ouccs.smy.paiclilearn.runtime.CancellationToken;   // [s13 新增]
 import ouccs.smy.paiclilearn.tool.ToolRegistry;
 
+import java.nio.file.Path;
 import java.util.Scanner;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,13 +50,21 @@ public class Main {
         ToolRegistry toolRegistry = new ToolRegistry();
         HitlToolRegistry hitlRegistry = new HitlToolRegistry(
                 toolRegistry, new TerminalHitlHandler(true));
+        Path projectRoot = hitlRegistry.delegate().getProjectPath();
+        try {
+            ProjectMemoryInitializer.ensureExists(projectRoot);
+        } catch (Exception e) {
+            LOG.warn("无法初始化 PAI.md 项目记忆: {}", e.getMessage());
+        }
+        String projectMemoryContext = new ProjectMemoryLoader(projectRoot).load();
         // [s08 新增] 记忆管理器初始化
         MemoryManager memoryManager = MemoryManager.createDefault(llmClient, hitlRegistry.delegate().getProjectPath().toString());
             // [s08 新增]
-        Agent agent = new Agent(llmClient, toolRegistry, memoryManager);
+        Agent agent = new Agent(llmClient, toolRegistry, PromptAssembler.createDefault(),
+                PromptContext.builder().projectMemoryContext(projectMemoryContext).build(), memoryManager);
         agent.setHitlRegistry(hitlRegistry);  // [s05] HITL 审批链
 
-        System.out.println("PaiCLI 教学版 v13 (Chapter 13 - 并行工具、预算与取消)");
+        System.out.println("PaiCLI 教学版 v14 (Chapter 14 - Project Memory / Provider)");
         System.out.println("命令: /save <内容> | /memory list|search|delete|clear | /team | /cancel | /clear | /exit");
 
         Scanner scanner = new Scanner(System.in);

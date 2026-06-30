@@ -22,6 +22,7 @@ public record PromptContext(
         String personality,
         LocalDate currentDate,
         ZoneId zoneId,
+        String projectMemoryContext,
         String memoryContext,
         Map<String, String> variables
 ) {
@@ -30,6 +31,7 @@ public record PromptContext(
         personality = normalizeName(personality, "calm", "personality");
         zoneId = zoneId == null ? ZoneId.systemDefault() : zoneId;
         currentDate = currentDate == null ? LocalDate.now(zoneId) : currentDate;
+        projectMemoryContext = projectMemoryContext == null ? "" : projectMemoryContext.trim();
         memoryContext = memoryContext == null ? "" : memoryContext.trim();
         variables = variables == null ? Map.of() : Map.copyOf(variables);
     }
@@ -51,7 +53,14 @@ public record PromptContext(
 
     /** 基于当前配置创建只替换记忆上下文的新实例。 */
     public PromptContext withMemoryContext(String memoryContext) {
-        return new PromptContext(approvalMode, personality, currentDate, zoneId, memoryContext, variables);
+        return new PromptContext(approvalMode, personality, currentDate, zoneId,
+                projectMemoryContext, memoryContext, variables);
+    }
+
+    /** s14: 基于当前配置创建只替换 PAI.md 项目记忆上下文的新实例。 */
+    public PromptContext withProjectMemoryContext(String projectMemoryContext) {
+        return new PromptContext(approvalMode, personality, currentDate, zoneId,
+                projectMemoryContext, memoryContext, variables);
     }
 
     private static String normalizeName(String value, String fallback, String field) {
@@ -69,6 +78,7 @@ public record PromptContext(
         private String personality = "calm";
         private LocalDate currentDate;
         private ZoneId zoneId = ZoneId.systemDefault();
+        private String projectMemoryContext = "";
         private String memoryContext = "";
         private final Map<String, String> variables = new LinkedHashMap<>();
 
@@ -97,6 +107,11 @@ public record PromptContext(
             return this;
         }
 
+        public Builder projectMemoryContext(String projectMemoryContext) {
+            this.projectMemoryContext = projectMemoryContext;
+            return this;
+        }
+
         public Builder variable(String key, Object value) {
             if (key != null && !key.isBlank() && value != null) {
                 variables.put(key.trim(), String.valueOf(value));
@@ -105,7 +120,8 @@ public record PromptContext(
         }
 
         public PromptContext build() {
-            return new PromptContext(approvalMode, personality, currentDate, zoneId, memoryContext, variables);
+            return new PromptContext(approvalMode, personality, currentDate, zoneId,
+                    projectMemoryContext, memoryContext, variables);
         }
     }
 }

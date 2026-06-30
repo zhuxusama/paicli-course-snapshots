@@ -35,6 +35,8 @@ public record LlmConfig(String provider, String apiKey, String model, String bas
             case "step" -> "STEP";
             case "kimi" -> "KIMI";
             case "freellmapi" -> "FREELLMAPI";
+            case "agnes" -> "AGNES";
+            case "xfyun-maas" -> "XFYUN_MAAS";
             default -> throw new IllegalArgumentException("未知 Provider: " + provider);
         };
         String key = value(values, prefix + "_API_KEY");
@@ -51,8 +53,9 @@ public record LlmConfig(String provider, String apiKey, String model, String bas
 
     private static String detectProvider(Map<String, String> values) {
         if (present(value(values, "OPENAI_COMPATIBLE_API_KEY"))) return "openai-compatible";
-        for (String provider : new String[]{"glm", "deepseek", "step", "kimi", "freellmapi"}) {
-            String key = value(values, provider.toUpperCase() + "_API_KEY");
+        for (String provider : new String[]{"glm", "deepseek", "step", "kimi", "freellmapi", "agnes", "xfyun-maas"}) {
+            String prefix = "xfyun-maas".equals(provider) ? "XFYUN_MAAS" : provider.toUpperCase();
+            String key = value(values, prefix + "_API_KEY");
             if ("kimi".equals(provider) && !present(key)) key = value(values, "MOONSHOT_API_KEY");
             if (present(key)) return provider;
         }

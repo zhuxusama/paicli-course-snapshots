@@ -68,6 +68,19 @@ class PromptAssemblerTest {
     }
 
     @Test
+    void injectsProjectMemoryBeforeRuntimeMemory() {
+        PromptContext context = fixedContext()
+                .withProjectMemoryContext("## Project Memory (PAI.md)\n\n- 默认使用中文")
+                .withMemoryContext("## Retrieved Memory\n\n- 本轮检索出的事实");
+
+        String prompt = PromptAssembler.createDefault().assemble(PromptMode.AGENT, context);
+
+        assertOrdered(prompt, "## Runtime Context", "## Project Memory (PAI.md)",
+                "## Retrieved Memory", "## Handoff");
+        assertTrue(prompt.contains("默认使用中文"));
+    }
+
+    @Test
     void agentAndClearHistoryUseAssemblerOutput() throws Exception {
         Path project = tempDir.resolve("project");
         Files.createDirectories(project.resolve("personalities"));
