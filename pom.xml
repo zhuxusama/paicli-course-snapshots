@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -10,7 +10,7 @@
     <packaging>jar</packaging>
 
     <name>PaiCLI-Learn</name>
-    <description>PaiCLI 渐进式构建课程 - s14 RAG 代码切块与关系分析</description>
+    <description>PaiCLI 娓愯繘寮忔瀯寤鸿绋?- s15 RAG 浠ｇ爜鍒囧潡涓庡叧绯诲垎鏋?/description>
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>

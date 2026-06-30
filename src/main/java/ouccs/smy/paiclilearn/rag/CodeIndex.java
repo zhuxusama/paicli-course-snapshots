@@ -1,4 +1,4 @@
-package ouccs.smy.paiclilearn.rag;
+﻿package ouccs.smy.paiclilearn.rag;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,21 +10,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 代码索引管理器 —— 扫描项目目录、对代码文件分块、提取结构关系。
- *
- * <p>本章（s14）的核心职责：把"项目扫描 → 文件收集 → AST 分块 → 关系提取"
- * 串联成一条可观测的管道。进度通过 {@link ProgressListener} 回传，
- * 结果汇入 {@link IndexResult}。
- *
- * <p><b>与源项目的差异：</b>源项目的 {@code CodeIndex} 在构造函数中持有
- * {@code EmbeddingClient} 和 {@code VectorStore}，本版本暂时不引入这两个依赖
- * （它们将在 s16 的 Embedding / SQLite 向量存储章节加入）。
- * 当前版本仅收集 chunk 与 relation 的计数信息，不做向量化与持久化。
- *
- * <p>集成点：后续章节的 {@code /index} 命令会构造 {@code CodeIndex}
- * 并注册 {@code ProgressListener}，把索引进度推送到终端输出流。
- *
- * @since s14
+ * 浠ｇ爜绱㈠紩绠＄悊鍣?鈥斺€?鎵弿椤圭洰鐩綍銆佸浠ｇ爜鏂囦欢鍒嗗潡銆佹彁鍙栫粨鏋勫叧绯汇€? *
+ * <p>鏈珷锛坰14锛夌殑鏍稿績鑱岃矗锛氭妸"椤圭洰鎵弿 鈫?鏂囦欢鏀堕泦 鈫?AST 鍒嗗潡 鈫?鍏崇郴鎻愬彇"
+ * 涓茶仈鎴愪竴鏉″彲瑙傛祴鐨勭閬撱€傝繘搴﹂€氳繃 {@link ProgressListener} 鍥炰紶锛? * 缁撴灉姹囧叆 {@link IndexResult}銆? *
+ * <p><b>涓庢簮椤圭洰鐨勫樊寮傦細</b>婧愰」鐩殑 {@code CodeIndex} 鍦ㄦ瀯閫犲嚱鏁颁腑鎸佹湁
+ * {@code EmbeddingClient} 鍜?{@code VectorStore}锛屾湰鐗堟湰鏆傛椂涓嶅紩鍏ヨ繖涓や釜渚濊禆
+ * 锛堝畠浠皢鍦?s16 鐨?Embedding / SQLite 鍚戦噺瀛樺偍绔犺妭鍔犲叆锛夈€? * 褰撳墠鐗堟湰浠呮敹闆?chunk 涓?relation 鐨勮鏁颁俊鎭紝涓嶅仛鍚戦噺鍖栦笌鎸佷箙鍖栥€? *
+ * <p>闆嗘垚鐐癸細鍚庣画绔犺妭鐨?{@code /index} 鍛戒护浼氭瀯閫?{@code CodeIndex}
+ * 骞舵敞鍐?{@code ProgressListener}锛屾妸绱㈠紩杩涘害鎺ㄩ€佸埌缁堢杈撳嚭娴併€? *
+ * @since s15
  */
 public class CodeIndex {
 
@@ -35,8 +29,7 @@ public class CodeIndex {
     private final ProgressListener progressListener;
 
     /**
-     * 索引进度监听器 —— 由调用方注入，用于把进度消息推送到终端或日志。
-     */
+     * 绱㈠紩杩涘害鐩戝惉鍣?鈥斺€?鐢辫皟鐢ㄦ柟娉ㄥ叆锛岀敤浜庢妸杩涘害娑堟伅鎺ㄩ€佸埌缁堢鎴栨棩蹇椼€?     */
     @FunctionalInterface
     public interface ProgressListener {
         void onProgress(String message);
@@ -46,12 +39,12 @@ public class CodeIndex {
         }
     }
 
-    /** 无进度监听器的默认构造 */
+    /** 鏃犺繘搴︾洃鍚櫒鐨勯粯璁ゆ瀯閫?*/
     public CodeIndex() {
         this(ProgressListener.noop());
     }
 
-    /** 带进度监听器的构造 */
+    /** 甯﹁繘搴︾洃鍚櫒鐨勬瀯閫?*/
     public CodeIndex(ProgressListener progressListener) {
         this.chunker = new CodeChunker();
         this.analyzer = new CodeAnalyzer();
@@ -59,25 +52,23 @@ public class CodeIndex {
     }
 
     /**
-     * 索引指定路径的代码库：收集文件 → 分块 → 分析关系 → 返回统计。
-     *
-     * @param projectPath 项目根目录路径
-     * @return 索引统计结果（chunk 数、关系数、状态消息）
+     * 绱㈠紩鎸囧畾璺緞鐨勪唬鐮佸簱锛氭敹闆嗘枃浠?鈫?鍒嗗潡 鈫?鍒嗘瀽鍏崇郴 鈫?杩斿洖缁熻銆?     *
+     * @param projectPath 椤圭洰鏍圭洰褰曡矾寰?     * @return 绱㈠紩缁熻缁撴灉锛坈hunk 鏁般€佸叧绯绘暟銆佺姸鎬佹秷鎭級
      */
     public IndexResult index(String projectPath) {
         Path root = Paths.get(projectPath).toAbsolutePath().normalize();
         if (!Files.exists(root)) {
-            String message = "路径不存在: " + projectPath;
-            emit("❌ " + message);
+            String message = "璺緞涓嶅瓨鍦? " + projectPath;
+            emit("鉂?" + message);
             return new IndexResult(0, 0, message);
         }
 
-        emit("🔍 开始索引: " + root);
+        emit("馃攳 寮€濮嬬储寮? " + root);
 
-        // 步骤 1：收集待索引文件
+        // 姝ラ 1锛氭敹闆嗗緟绱㈠紩鏂囦欢
         List<Path> filesToIndex = new ArrayList<>();
         collectFiles(root, filesToIndex);
-        emit("📁 发现 " + filesToIndex.size() + " 个文件待索引");
+        emit("馃搧 鍙戠幇 " + filesToIndex.size() + " 涓枃浠跺緟绱㈠紩");
 
         int totalChunks = 0;
         int totalRelations = 0;
@@ -85,11 +76,11 @@ public class CodeIndex {
         int processed = 0;
         int total = filesToIndex.size();
 
-        // 步骤 2 & 3：逐文件分块 + 分析关系
+        // 姝ラ 2 & 3锛氶€愭枃浠跺垎鍧?+ 鍒嗘瀽鍏崇郴
         for (Path file : filesToIndex) {
             processed++;
             if (processed % 10 == 0 || processed == total) {
-                emit(String.format("   进度: %d/%d (%s)",
+                emit(String.format("   杩涘害: %d/%d (%s)",
                         processed, total, file.getFileName()));
             }
 
@@ -102,15 +93,15 @@ public class CodeIndex {
                     totalRelations += relations.size();
                 }
             } catch (Exception e) {
-                String message = "   ⚠️ 索引失败: " + file + " - " + e.getMessage();
+                String message = "   鈿狅笍 绱㈠紩澶辫触: " + file + " - " + e.getMessage();
                 emit(message);
                 log.warn("code index failed for file {}", file, e);
             }
         }
 
-        String msg = String.format("索引完成：%d 个代码块，%d 条关系",
+        String msg = String.format("绱㈠紩瀹屾垚锛?d 涓唬鐮佸潡锛?d 鏉″叧绯?,
                 totalChunks, totalRelations);
-        emit("✅ " + msg);
+        emit("鉁?" + msg);
         return new IndexResult(totalChunks, totalRelations, msg);
     }
 
@@ -119,9 +110,7 @@ public class CodeIndex {
     }
 
     /**
-     * 递归收集项目目录中需要索引的代码文件。
-     * 跳过常见的非代码目录和隐藏目录。
-     */
+     * 閫掑綊鏀堕泦椤圭洰鐩綍涓渶瑕佺储寮曠殑浠ｇ爜鏂囦欢銆?     * 璺宠繃甯歌鐨勯潪浠ｇ爜鐩綍鍜岄殣钘忕洰褰曘€?     */
     private void collectFiles(Path root, List<Path> files) {
         try {
             Files.walkFileTree(root, new SimpleFileVisitor<>() {
@@ -161,14 +150,13 @@ public class CodeIndex {
                 }
             });
         } catch (IOException e) {
-            String message = "遍历文件失败: " + e.getMessage();
-            emit("❌ " + message);
+            String message = "閬嶅巻鏂囦欢澶辫触: " + e.getMessage();
+            emit("鉂?" + message);
             log.warn("code index file traversal failed for root {}", root, e);
         }
     }
 
     /**
-     * 索引结果 —— 包含 chunk 数、关系数和状态描述消息。
-     */
+     * 绱㈠紩缁撴灉 鈥斺€?鍖呭惈 chunk 鏁般€佸叧绯绘暟鍜岀姸鎬佹弿杩版秷鎭€?     */
     public record IndexResult(int chunkCount, int relationCount, String message) {}
 }

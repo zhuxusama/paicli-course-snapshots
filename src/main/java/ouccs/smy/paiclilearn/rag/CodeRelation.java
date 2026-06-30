@@ -1,23 +1,19 @@
-package ouccs.smy.paiclilearn.rag;
+﻿package ouccs.smy.paiclilearn.rag;
 
 /**
- * 代码关系数据模型 —— 记录源码中两个符号之间的结构依赖。
- *
- * <p>五种关系类型：
- * <ul>
- *   <li><b>extends</b>：类继承</li>
- *   <li><b>implements</b>：接口实现</li>
- *   <li><b>imports</b>：非 JDK 导入依赖（近似项目内依赖）</li>
- *   <li><b>calls</b>：方法调用（同一类内的方法间调用）</li>
- *   <li><b>contains</b>：类包含方法</li>
+ * 浠ｇ爜鍏崇郴鏁版嵁妯″瀷 鈥斺€?璁板綍婧愮爜涓袱涓鍙蜂箣闂寸殑缁撴瀯渚濊禆銆? *
+ * <p>浜旂鍏崇郴绫诲瀷锛? * <ul>
+ *   <li><b>extends</b>锛氱被缁ф壙</li>
+ *   <li><b>implements</b>锛氭帴鍙ｅ疄鐜?/li>
+ *   <li><b>imports</b>锛氶潪 JDK 瀵煎叆渚濊禆锛堣繎浼奸」鐩唴渚濊禆锛?/li>
+ *   <li><b>calls</b>锛氭柟娉曡皟鐢紙鍚屼竴绫诲唴鐨勬柟娉曢棿璋冪敤锛?/li>
+ *   <li><b>contains</b>锛氱被鍖呭惈鏂规硶</li>
  * </ul>
  *
- * @param fromFile     源文件路径
- * @param fromName     源符号名称（类名、方法名或 "file"）
- * @param toFile       目标文件路径（可为 null 表示尚未解析到具体文件）
- * @param toName       目标符号名称
- * @param relationType 关系类型
- * @since s14
+ * @param fromFile     婧愭枃浠惰矾寰? * @param fromName     婧愮鍙峰悕绉帮紙绫诲悕銆佹柟娉曞悕鎴?"file"锛? * @param toFile       鐩爣鏂囦欢璺緞锛堝彲涓?null 琛ㄧず灏氭湭瑙ｆ瀽鍒板叿浣撴枃浠讹級
+ * @param toName       鐩爣绗﹀彿鍚嶇О
+ * @param relationType 鍏崇郴绫诲瀷
+ * @since s15
  */
 public record CodeRelation(String fromFile, String fromName,
                            String toFile, String toName, String relationType) {

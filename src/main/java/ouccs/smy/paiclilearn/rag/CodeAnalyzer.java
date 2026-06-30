@@ -1,4 +1,4 @@
-package ouccs.smy.paiclilearn.rag;
+﻿package ouccs.smy.paiclilearn.rag;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParserConfiguration;
@@ -18,34 +18,29 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 代码分析器 —— 基于 JavaParser AST 提取源码中的结构关系，构建代码关系图谱。
- *
- * <p>分析流程：
- * <ol>
- *   <li>用 JavaParser 将 Java 文件解析为 AST（CompilationUnit）</li>
- *   <li>从 import 声明中提取非 JDK 导入，生成 {@code imports} 关系</li>
- *   <li>遍历类/接口声明，提取 {@code extends}、{@code implements}、{@code contains} 关系</li>
- *   <li>遍历方法调用表达式，向上查找所属方法，生成 {@code calls} 关系</li>
+ * 浠ｇ爜鍒嗘瀽鍣?鈥斺€?鍩轰簬 JavaParser AST 鎻愬彇婧愮爜涓殑缁撴瀯鍏崇郴锛屾瀯寤轰唬鐮佸叧绯诲浘璋便€? *
+ * <p>鍒嗘瀽娴佺▼锛? * <ol>
+ *   <li>鐢?JavaParser 灏?Java 鏂囦欢瑙ｆ瀽涓?AST锛圕ompilationUnit锛?/li>
+ *   <li>浠?import 澹版槑涓彁鍙栭潪 JDK 瀵煎叆锛岀敓鎴?{@code imports} 鍏崇郴</li>
+ *   <li>閬嶅巻绫?鎺ュ彛澹版槑锛屾彁鍙?{@code extends}銆亄@code implements}銆亄@code contains} 鍏崇郴</li>
+ *   <li>閬嶅巻鏂规硶璋冪敤琛ㄨ揪寮忥紝鍚戜笂鏌ユ壘鎵€灞炴柟娉曪紝鐢熸垚 {@code calls} 鍏崇郴</li>
  * </ol>
  *
- * <p>本章只做 AST 分析与关系提取；在后续章节中，这些关系会存入 VectorStore
- * 供 {@code CodeRetriever} 做语义召回与关系图谱联合查询。
- *
- * @since s14
+ * <p>鏈珷鍙仛 AST 鍒嗘瀽涓庡叧绯绘彁鍙栵紱鍦ㄥ悗缁珷鑺備腑锛岃繖浜涘叧绯讳細瀛樺叆 VectorStore
+ * 渚?{@code CodeRetriever} 鍋氳涔夊彫鍥炰笌鍏崇郴鍥捐氨鑱斿悎鏌ヨ銆? *
+ * @since s15
  */
 public class CodeAnalyzer {
 
-    /** JavaParser 实例：配置为 Java 17 语言级别，支持 record、sealed class、text block 等语法。 */
+    /** JavaParser 瀹炰緥锛氶厤缃负 Java 17 璇█绾у埆锛屾敮鎸?record銆乻ealed class銆乼ext block 绛夎娉曘€?*/
     private final JavaParser parser = new JavaParser(
             new ParserConfiguration().setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17));
 
     /**
-     * 分析单个 Java 文件，提取所有代码关系。
-     *
-     * @param filePath 待分析文件的路径
-     * @return 该文件中发现的所有代码关系列表；解析失败时返回空列表
-     * @throws IOException 读取文件失败时抛出
-     */
+     * 鍒嗘瀽鍗曚釜 Java 鏂囦欢锛屾彁鍙栨墍鏈変唬鐮佸叧绯汇€?     *
+     * @param filePath 寰呭垎鏋愭枃浠剁殑璺緞
+     * @return 璇ユ枃浠朵腑鍙戠幇鐨勬墍鏈変唬鐮佸叧绯诲垪琛紱瑙ｆ瀽澶辫触鏃惰繑鍥炵┖鍒楄〃
+     * @throws IOException 璇诲彇鏂囦欢澶辫触鏃舵姏鍑?     */
     public List<CodeRelation> analyzeFile(Path filePath) throws IOException {
         String content = Files.readString(filePath);
         String relativePath = filePath.toString();
@@ -58,19 +53,15 @@ public class CodeAnalyzer {
 
         CompilationUnit cu = result.getResult().get();
 
-        // 步骤 1：提取导入关系（imports）
-        extractImports(relativePath, cu, relations);
+        // 姝ラ 1锛氭彁鍙栧鍏ュ叧绯伙紙imports锛?        extractImports(relativePath, cu, relations);
 
-        // 步骤 2：提取类级别关系（extends / implements / contains / calls）
-        extractClassRelations(relativePath, cu, relations);
+        // 姝ラ 2锛氭彁鍙栫被绾у埆鍏崇郴锛坋xtends / implements / contains / calls锛?        extractClassRelations(relativePath, cu, relations);
 
         return relations;
     }
 
     /**
-     * 提取非 JDK 的 import 声明，生成 {@code imports} 关系。
-     * 跳过 {@code java.*} 和 {@code javax.*}，作为项目内依赖的近似判断。
-     */
+     * 鎻愬彇闈?JDK 鐨?import 澹版槑锛岀敓鎴?{@code imports} 鍏崇郴銆?     * 璺宠繃 {@code java.*} 鍜?{@code javax.*}锛屼綔涓洪」鐩唴渚濊禆鐨勮繎浼煎垽鏂€?     */
     private void extractImports(String filePath, CompilationUnit cu, List<CodeRelation> relations) {
         for (ImportDeclaration imp : cu.getImports()) {
             String importName = imp.getNameAsString();
@@ -83,33 +74,28 @@ public class CodeAnalyzer {
     }
 
     /**
-     * 遍历所有类/接口声明，提取 extends、implements、contains 关系，
-     * 以及类内方法间的 calls 关系。
-     */
+     * 閬嶅巻鎵€鏈夌被/鎺ュ彛澹版槑锛屾彁鍙?extends銆乮mplements銆乧ontains 鍏崇郴锛?     * 浠ュ強绫诲唴鏂规硶闂寸殑 calls 鍏崇郴銆?     */
     private void extractClassRelations(String filePath, CompilationUnit cu,
                                        List<CodeRelation> relations) {
         cu.findAll(ClassOrInterfaceDeclaration.class).forEach(clazz -> {
             String className = clazz.getNameAsString();
 
-            // extends：父类/抽象类继承
-            clazz.getExtendedTypes().forEach(ext ->
+            // extends锛氱埗绫?鎶借薄绫荤户鎵?            clazz.getExtendedTypes().forEach(ext ->
                     relations.add(new CodeRelation(
                             filePath, className, null, ext.getNameAsString(), "extends")));
 
-            // implements：接口实现
-            clazz.getImplementedTypes().forEach(impl ->
+            // implements锛氭帴鍙ｅ疄鐜?            clazz.getImplementedTypes().forEach(impl ->
                     relations.add(new CodeRelation(
                             filePath, className, null, impl.getNameAsString(), "implements")));
 
-            // contains：类 → 方法 的包含关系
-            clazz.getMethods().forEach(method -> {
+            // contains锛氱被 鈫?鏂规硶 鐨勫寘鍚叧绯?            clazz.getMethods().forEach(method -> {
                 String methodName = method.getNameAsString();
                 relations.add(new CodeRelation(
                         filePath, className, filePath,
                         className + "." + methodName, "contains"));
             });
 
-            // calls：方法间调用关系（在 AST 中向上查找所属方法作为调用者）
+            // calls锛氭柟娉曢棿璋冪敤鍏崇郴锛堝湪 AST 涓悜涓婃煡鎵炬墍灞炴柟娉曚綔涓鸿皟鐢ㄨ€咃級
             clazz.findAll(MethodCallExpr.class).forEach(call -> {
                 String callee = call.getNameAsString();
                 Optional<MethodDeclaration> parentMethod = findParentMethod(call);
@@ -123,8 +109,7 @@ public class CodeAnalyzer {
     }
 
     /**
-     * 从当前 AST 节点向上遍历，找到最近的方法声明节点作为调用者。
-     */
+     * 浠庡綋鍓?AST 鑺傜偣鍚戜笂閬嶅巻锛屾壘鍒版渶杩戠殑鏂规硶澹版槑鑺傜偣浣滀负璋冪敤鑰呫€?     */
     private Optional<MethodDeclaration> findParentMethod(Node node) {
         Node current = node;
         while (current != null) {

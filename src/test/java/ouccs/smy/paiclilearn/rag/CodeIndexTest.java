@@ -1,4 +1,4 @@
-package ouccs.smy.paiclilearn.rag;
+﻿package ouccs.smy.paiclilearn.rag;
 
 import org.junit.jupiter.api.Test;
 
@@ -8,57 +8,55 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * CodeIndex 教学测试 —— 展示代码索引的扫描、分块、分析全流程。
- *
- * <p>本章（s14）的 CodeIndex 尚未集成 EmbeddingClient 和 VectorStore
- * （它们将在 s16 加入），因此测试只验证扫描+分块+关系提取+进度回调。
- */
+ * CodeIndex 鏁欏娴嬭瘯 鈥斺€?灞曠ず浠ｇ爜绱㈠紩鐨勬壂鎻忋€佸垎鍧椼€佸垎鏋愬叏娴佺▼銆? *
+ * <p>鏈珷锛坰14锛夌殑 CodeIndex 灏氭湭闆嗘垚 EmbeddingClient 鍜?VectorStore
+ * 锛堝畠浠皢鍦?s16 鍔犲叆锛夛紝鍥犳娴嬭瘯鍙獙璇佹壂鎻?鍒嗗潡+鍏崇郴鎻愬彇+杩涘害鍥炶皟銆? */
 class CodeIndexTest {
 
     @Test
     void demoIndexNonExistentPath() {
-        System.out.println("【输入】不存在的路径");
+        System.out.println("銆愯緭鍏ャ€戜笉瀛樺湪鐨勮矾寰?);
         CodeIndex indexer = new CodeIndex();
         CodeIndex.IndexResult result = indexer.index("/non/existent/path");
 
-        System.out.println("【输出】chunkCount=" + result.chunkCount() + ", message=" + result.message());
+        System.out.println("銆愯緭鍑恒€慶hunkCount=" + result.chunkCount() + ", message=" + result.message());
         assertEquals(0, result.chunkCount());
-        assertTrue(result.message().contains("路径不存在"));
+        assertTrue(result.message().contains("璺緞涓嶅瓨鍦?));
     }
 
     @Test
     void demoIndexTestResources() {
-        System.out.println("【输入】src/test/resources/rag 目录（含 SampleService.java）");
+        System.out.println("銆愯緭鍏ャ€憇rc/test/resources/rag 鐩綍锛堝惈 SampleService.java锛?);
 
         CodeIndex indexer = new CodeIndex();
         CodeIndex.IndexResult result = indexer.index("src/test/resources/rag");
 
-        System.out.println("【输出】chunks=" + result.chunkCount() + ", relations=" + result.relationCount());
+        System.out.println("銆愯緭鍑恒€慶hunks=" + result.chunkCount() + ", relations=" + result.relationCount());
         assertTrue(result.chunkCount() > 0,
-                "应该至少索引一个代码块（类级+方法级）");
-        assertTrue(result.message().contains("索引完成"),
-                "成功消息应包含 '索引完成'");
+                "搴旇鑷冲皯绱㈠紩涓€涓唬鐮佸潡锛堢被绾?鏂规硶绾э級");
+        assertTrue(result.message().contains("绱㈠紩瀹屾垚"),
+                "鎴愬姛娑堟伅搴斿寘鍚?'绱㈠紩瀹屾垚'");
     }
 
     @Test
     void demoProgressListener() {
-        System.out.println("【输入】带进度监听器的 CodeIndex");
+        System.out.println("銆愯緭鍏ャ€戝甫杩涘害鐩戝惉鍣ㄧ殑 CodeIndex");
 
         List<String> messages = new ArrayList<>();
         CodeIndex indexer = new CodeIndex(messages::add);
 
         CodeIndex.IndexResult result = indexer.index("src/test/resources/rag");
 
-        System.out.println("【转换】索引过程中产生了 " + messages.size() + " 条进度消息：");
+        System.out.println("銆愯浆鎹€戠储寮曡繃绋嬩腑浜х敓浜?" + messages.size() + " 鏉¤繘搴︽秷鎭細");
         messages.forEach(msg -> System.out.println("  " + msg));
 
-        System.out.println("【输出】验证进度回调覆盖了开始、发现、完成三个阶段");
+        System.out.println("銆愯緭鍑恒€戦獙璇佽繘搴﹀洖璋冭鐩栦簡寮€濮嬨€佸彂鐜般€佸畬鎴愪笁涓樁娈?);
         assertTrue(result.chunkCount() > 0);
-        assertTrue(messages.stream().anyMatch(m -> m.startsWith("🔍 开始索引")),
-                "第一条进度消息应为 '开始索引'");
-        assertTrue(messages.stream().anyMatch(m -> m.startsWith("📁 发现")),
-                "应包含 '发现文件' 进度消息");
-        assertTrue(messages.stream().anyMatch(m -> m.startsWith("✅ 索引完成")),
-                "最后一条进度消息应为 '索引完成'");
+        assertTrue(messages.stream().anyMatch(m -> m.startsWith("馃攳 寮€濮嬬储寮?)),
+                "绗竴鏉¤繘搴︽秷鎭簲涓?'寮€濮嬬储寮?");
+        assertTrue(messages.stream().anyMatch(m -> m.startsWith("馃搧 鍙戠幇")),
+                "搴斿寘鍚?'鍙戠幇鏂囦欢' 杩涘害娑堟伅");
+        assertTrue(messages.stream().anyMatch(m -> m.startsWith("鉁?绱㈠紩瀹屾垚")),
+                "鏈€鍚庝竴鏉¤繘搴︽秷鎭簲涓?'绱㈠紩瀹屾垚'");
     }
 }
