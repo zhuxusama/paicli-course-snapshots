@@ -281,3 +281,27 @@ course_full/chapters/s10_task_planner/
 s10 建立了计划的数据结构——Task 知道谁依赖谁，ExecutionPlan 知道排序和分批，Planner 能从目标生成计划。但计划还只是数据，没有执行者——task 的 status 永远停在 PENDING。
 
 s11 将实现 PlanExecuteAgent：把 DAG 变成可审阅、可执行、失败后自动重规划的完整流水线。用户能看到 Agent 打算做什么，在执行前有机会干预（Enter 执行/ESC 取消/文本补充重规划），每个 task 由真实 Agent + 工具链逐条执行。
+---
+
+## Run DemoTest：把测试当成章节教程
+
+`PlanDagDemoTest` 已更新为控制台教程测试。它不是只检查算法，而是按下面的顺序教你使用本章新增模型：
+
+```text
+【场景】为什么复杂目标需要先拆成 Task DAG
+【输入】4 个任务及其依赖关系
+【执行】addTask、computeExecutionOrder、getExecutionBatches、markCompleted
+【输出】拓扑序、并行批次、状态变化和进度
+```
+
+推荐先只跑这一条命令：
+
+```powershell
+mvn test -Dtest=PlanDagDemoTest -DskipTests=false
+```
+
+然后对照 `Task.java` 和 `ExecutionPlan.java` 看三件事：
+
+1. `Task` 如何表达类型、状态、依赖和反向依赖；
+2. `ExecutionPlan` 如何把任务组织成 DAG，并计算拓扑序和可并行批次；
+3. 执行器未来如何根据 `getExecutableTasks()` 和 `TaskStatus` 推进计划。
