@@ -6,14 +6,14 @@ import ouccs.smy.paiclilearn.memory.TokenBudget;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 
-/** 通过生产 ConversationHistoryCompactor 执行真实会话压缩并评价结果。 */
+/** 通过生产 ConversationHistoryCompactor 执行真实会话压缩并评估结果。 */
 final class CompressionBenchmark {
     private static final int RETAIN_RECENT_ROUNDS = 2;
 
@@ -46,9 +46,8 @@ final class CompressionBenchmark {
         boolean recentTailPreserved = endsWith(history, expectedTail);
         boolean protocolValid = toolProtocolValid(history);
         String summary = findSummary(history);
-        List<FactEvaluation> facts = evaluateFacts(summary, expectedTail);
-        double factRecall = facts.isEmpty() ? 1.0
-                : facts.stream().filter(FactEvaluation::matched).count() / (double) facts.size();
+        List<FactEvaluation> facts = CriticalFactCatalog.evaluate(summary, expectedTail);
+        double factRecall = CriticalFactCatalog.recall(facts);
 
         List<GateEvaluation> gates = new ArrayList<>();
         gates.add(gate("baseline_event_count", !rollout.baselineFixture()
@@ -82,7 +81,7 @@ final class CompressionBenchmark {
         return new GateEvaluation(name, passed, expected, actual);
     }
 
-    private static List<LlmClient.Message> recentTail(List<LlmClient.Message> history, int rounds) {
+    static List<LlmClient.Message> recentTail(List<LlmClient.Message> history, int rounds) {
         int users = 0;
         for (int i = history.size() - 1; i >= 0; i--) {
             if ("user".equals(history.get(i).role())) users++;
@@ -91,18 +90,69 @@ final class CompressionBenchmark {
         return List.copyOf(history);
     }
 
-    private static int compressibleCharacters(List<LlmClient.Message> history, int tailSize) {
-        int start = !history.isEmpty() && "system".equals(history.get(0).role()) ? 1 : 0;
-        int end = Math.max(start, history.size() - tailSize);
-        int chars = 0;
-        for (int i = start; i < end; i++) chars += semanticText(history.get(i)).length();
-        return chars;
+    static int compressStart(List<LlmClient.Message> history) {
+        return !history.isEmpty() && "system".equals(history.get(0).role()) ? 1 : 0;
     }
 
-    private static Map<String, Double> roleCoverage(List<LlmClient.Message> history, int tailSize,
-                                                    String requestText) {
-        int start = !history.isEmpty() && "system".equals(history.get(0).role()) ? 1 : 0;
-        int end = Math.max(start, history.size() - tailSize);
+    static int compressEnd(List<LlmClient.Message> history, int retainedTailSize) {
+        return Math.max(compressStart(history), history.size() - retainedTailSize);
+    }
+
+    static String semanticText(LlmClient.Message message) {
+        StringBuilder text = new StringBuilder();
+        if (message.content() != null) text.append(message.content());
+        if (message.toolCalls() != null) {
+            for (LlmClient.ToolCall call : message.toolCalls()) {
+                text.append('\n').append(call.function().name()).append(' ')
+                        .append(call.function().arguments());
+            }
+        }
+        if (message.toolCallId() != null) text.append('\n').append(message.toolCallId());
+        return text.toString();
+    }
+
+    static int tokenCount(List<LlmClient.Message> messages) {
+        return TokenBudget.estimateMessagesTokens(messages);
+    }
+
+    static boolean endsWith(List<LlmClient.Message> actual, List<LlmClient.Message> suffix) {
+        if (suffix.size() > actual.size()) return false;
+        return actual.subList(actual.size() - suffix.size(), actual.size()).equals(suffix);
+    }
+
+    static boolean toolProtocolValid(List<LlmClient.Message> history) {
+        Set<String> calls = new LinkedHashSet<>();
+        Set<String> outputs = new LinkedHashSet<>();
+        for (LlmClient.Message message : history) {
+            if (message.toolCalls() != null) {
+                for (LlmClient.ToolCall call : message.toolCalls()) {
+                    if (!calls.add(call.id())) return false;
+                }
+            }
+            if ("tool".equals(message.role())) {
+                if (message.toolCallId() == null || !outputs.add(message.toolCallId())) return false;
+            }
+        }
+        return calls.equals(outputs);
+    }
+
+    static String findSummary(List<LlmClient.Message> history) {
+        for (LlmClient.Message message : history) {
+            if (!"user".equals(message.role()) || message.content() == null) continue;
+            String content = message.content();
+            if (content.startsWith("[已压缩]")) return content.substring("[已压缩]".length()).trim();
+            if (content.startsWith("[宸插帇缂")) {
+                int close = content.indexOf(']');
+                return close >= 0 ? content.substring(close + 1).trim() : content;
+            }
+        }
+        return "";
+    }
+
+    static Map<String, Double> roleCoverage(List<LlmClient.Message> history, int tailSize,
+                                            String requestText) {
+        int start = compressStart(history);
+        int end = compressEnd(history, tailSize);
         Map<String, Integer> available = new LinkedHashMap<>();
         for (int i = start; i < end; i++) {
             LlmClient.Message message = history.get(i);
@@ -121,94 +171,15 @@ final class CompressionBenchmark {
         return Map.copyOf(result);
     }
 
-    private static boolean endsWith(List<LlmClient.Message> actual, List<LlmClient.Message> suffix) {
-        if (suffix.size() > actual.size()) return false;
-        return actual.subList(actual.size() - suffix.size(), actual.size()).equals(suffix);
+    private static int compressibleCharacters(List<LlmClient.Message> history, int tailSize) {
+        int start = compressStart(history);
+        int end = compressEnd(history, tailSize);
+        int chars = 0;
+        for (int i = start; i < end; i++) chars += semanticText(history.get(i)).length();
+        return chars;
     }
 
-    private static boolean toolProtocolValid(List<LlmClient.Message> history) {
-        Set<String> calls = new LinkedHashSet<>();
-        Set<String> outputs = new LinkedHashSet<>();
-        for (LlmClient.Message message : history) {
-            if (message.toolCalls() != null) {
-                for (LlmClient.ToolCall call : message.toolCalls()) {
-                    if (!calls.add(call.id())) return false;
-                }
-            }
-            if ("tool".equals(message.role())) {
-                if (message.toolCallId() == null || !outputs.add(message.toolCallId())) return false;
-            }
-        }
-        return calls.equals(outputs);
-    }
-
-    private static String findSummary(List<LlmClient.Message> history) {
-        for (LlmClient.Message message : history) {
-            if ("user".equals(message.role()) && message.content() != null
-                    && message.content().startsWith("[已压缩]")) {
-                return message.content().substring("[已压缩]".length()).trim();
-            }
-            if ("user".equals(message.role()) && message.content() != null
-                    && message.content().startsWith("[已压缩的历史对话摘要]")) {
-                return message.content().substring("[已压缩的历史对话摘要]".length()).trim();
-            }
-        }
-        return "";
-    }
-
-    private static List<FactEvaluation> evaluateFacts(String summary, List<LlmClient.Message> tail) {
-        String tailText = tail.stream().map(CompressionBenchmark::semanticText)
-                .reduce("", (left, right) -> left + "\n" + right);
-        List<FactSpec> specs = List.of(
-                new FactSpec("git_before_change", "修改前先提交 Git", List.of(List.of("git", "提交"))),
-                new FactSpec("small_fluctuation_peak", "允许小波动冲更高峰值", List.of(List.of("小波动", "峰值"))),
-                new FactSpec("driver_d004", "driver D004", List.of(List.of("d004"))),
-                new FactSpec("market_tag", "tag market-aggressive-check", List.of(List.of("market-aggressive-check"))),
-                new FactSpec("model_fallback", "错误 MODEL_FALLBACK", List.of(List.of("model_fallback"))),
-                new FactSpec("driver_d001", "driver D001", List.of(List.of("d001"))),
-                new FactSpec("http_500", "HTTP 500", List.of(List.of("500"))),
-                new FactSpec("score_350k", "总分目标 35 万", List.of(List.of("35万"), List.of("350000"))),
-                new FactSpec("aggressive_backup", "更激进但必须备份", List.of(List.of("激进", "备份"))),
-                new FactSpec("self_run_tests", "测试由用户自己运行",
-                        List.of(List.of("不用测试", "自己运行"), List.of("用户", "运行", "测试")))
-        );
-        List<FactEvaluation> result = new ArrayList<>();
-        for (FactSpec spec : specs) {
-            boolean inSummary = matches(summary, spec.alternatives());
-            boolean inTail = matches(tailText, spec.alternatives());
-            result.add(new FactEvaluation(spec.id(), spec.expected(), inSummary || inTail,
-                    inSummary ? "summary" : inTail ? "recent-tail" : "missing"));
-        }
-        return List.copyOf(result);
-    }
-
-    private static boolean matches(String text, List<List<String>> alternatives) {
-        String normalized = normalize(text);
-        for (List<String> terms : alternatives) {
-            if (terms.stream().map(CompressionBenchmark::normalize).allMatch(normalized::contains)) return true;
-        }
-        return false;
-    }
-
-    private static String normalize(String value) {
-        return value == null ? "" : value.toLowerCase(Locale.ROOT).replaceAll("\\s+", "");
-    }
-
-    private static String semanticText(LlmClient.Message message) {
-        StringBuilder text = new StringBuilder();
-        if (message.content() != null) text.append(message.content());
-        if (message.toolCalls() != null) {
-            for (LlmClient.ToolCall call : message.toolCalls()) {
-                text.append('\n').append(call.function().name()).append(' ')
-                        .append(call.function().arguments());
-            }
-        }
-        return text.toString();
-    }
-
-    private record FactSpec(String id, String expected, List<List<String>> alternatives) {}
-
-    private static final class RecordingClient implements LlmClient {
+    static final class RecordingClient implements LlmClient {
         private final LlmClient delegate;
         private int requestCharacters;
         private String requestText = "";
@@ -216,7 +187,7 @@ final class CompressionBenchmark {
         private int outputTokens;
         private int cachedInputTokens;
 
-        private RecordingClient(LlmClient delegate) { this.delegate = delegate; }
+        RecordingClient(LlmClient delegate) { this.delegate = delegate; }
 
         @Override
         public ChatResponse chat(List<Message> messages, List<Tool> tools, StreamListener listener)
@@ -237,6 +208,13 @@ final class CompressionBenchmark {
         @Override public String getModelName() { return delegate.getModelName(); }
         @Override public String getProviderName() { return delegate.getProviderName(); }
         @Override public int maxContextWindow() { return delegate.maxContextWindow(); }
+        @Override public boolean supportsPromptCaching() { return delegate.supportsPromptCaching(); }
+        @Override public String promptCacheMode() { return delegate.promptCacheMode(); }
+        int requestCharacters() { return requestCharacters; }
+        String requestText() { return requestText; }
+        int inputTokens() { return inputTokens; }
+        int outputTokens() { return outputTokens; }
+        int cachedInputTokens() { return cachedInputTokens; }
     }
 }
 

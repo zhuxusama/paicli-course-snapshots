@@ -1,0 +1,109 @@
+[
+  {
+    "id": "git_before_change",
+    "type": "constraint",
+    "severity": "critical",
+    "expected": "修改前先提交 Git",
+    "sourceHint": "用户明确要求：先提交一次 git，再修改。",
+    "alternatives": [
+      ["git", "提交"],
+      ["commit"]
+    ]
+  },
+  {
+    "id": "small_fluctuation_peak",
+    "type": "decision",
+    "severity": "critical",
+    "expected": "允许小波动，目标是冲更高峰值",
+    "sourceHint": "用户批准策略方向：允许小波动冲更高峰值。",
+    "alternatives": [
+      ["小波动", "峰值"],
+      ["fluctuation", "peak"]
+    ]
+  },
+  {
+    "id": "driver_d004",
+    "type": "artifact",
+    "severity": "important",
+    "expected": "关键 driver D004",
+    "sourceHint": "实验和分析围绕 D004 单跑结果展开。",
+    "alternatives": [
+      ["d004"]
+    ]
+  },
+  {
+    "id": "market_tag",
+    "type": "artifact",
+    "severity": "important",
+    "expected": "实验 tag market-aggressive-check",
+    "sourceHint": "后续复现实验需要记住 market-aggressive-check 这个 tag。",
+    "alternatives": [
+      ["market-aggressive-check"]
+    ]
+  },
+  {
+    "id": "model_fallback",
+    "type": "error",
+    "severity": "critical",
+    "expected": "出现 MODEL_FALLBACK 错误",
+    "sourceHint": "用户后续反馈测试报错包含 MODEL_FALLBACK。",
+    "alternatives": [
+      ["model_fallback"]
+    ]
+  },
+  {
+    "id": "driver_d001",
+    "type": "error",
+    "severity": "important",
+    "expected": "报错涉及 driver D001",
+    "sourceHint": "错误日志中出现 driver_id=D001。",
+    "alternatives": [
+      ["d001"]
+    ]
+  },
+  {
+    "id": "http_500",
+    "type": "error",
+    "severity": "important",
+    "expected": "报错包含 HTTP 500",
+    "sourceHint": "用户贴出的失败信息包含 500 Server Error。",
+    "alternatives": [
+      ["500"],
+      ["servererror"]
+    ]
+  },
+  {
+    "id": "score_350k",
+    "type": "goal",
+    "severity": "important",
+    "expected": "总分目标 35 万 / 350000",
+    "sourceHint": "任务目标中出现 35 万或 350000 的分数目标。",
+    "alternatives": [
+      ["35万"],
+      ["350000"]
+    ]
+  },
+  {
+    "id": "aggressive_backup",
+    "type": "constraint",
+    "severity": "critical",
+    "expected": "策略可以更激进，但必须备份/可回滚",
+    "sourceHint": "用户允许更激进方向，但安全边界是备份和可回滚。",
+    "alternatives": [
+      ["激进", "备份"],
+      ["aggressive", "backup"],
+      ["可回滚"]
+    ]
+  },
+  {
+    "id": "self_run_tests",
+    "type": "constraint",
+    "severity": "important",
+    "expected": "测试由用户自己运行",
+    "sourceHint": "用户表达过不需要 Agent 代跑测试，自己运行验证。",
+    "alternatives": [
+      ["不用测试", "自己运行"],
+      ["用户", "运行", "测试"]
+    ]
+  }
+]

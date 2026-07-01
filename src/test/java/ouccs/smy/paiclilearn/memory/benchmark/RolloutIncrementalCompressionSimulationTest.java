@@ -9,18 +9,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * 回放真实 rollout，模拟运行时 conversationHistory 逐步增长，
- * 只有达到上下文阈值后才触发压缩。
- */
+/** 回放真实 rollout，模拟运行时 conversationHistory 逐步增长，到阈值后才压缩。 */
 class RolloutIncrementalCompressionSimulationTest {
     private static final int SIMULATED_CONTEXT_THRESHOLD = 32_000;
     private static final int RETAIN_RECENT_ROUNDS = 2;
@@ -30,9 +24,19 @@ class RolloutIncrementalCompressionSimulationTest {
             throws Exception {
         var rollout = new CodexRolloutLoader().load(CodexRolloutLoader.locateFixtureOrSkip());
         List<LlmClient.Message> history = new ArrayList<>();
-        ConversationHistoryCompactor compactor = new ConversationHistoryCompactor(
-                new DeterministicSummaryLlmClient(), RETAIN_RECENT_ROUNDS);
-        List<CompressionEvent> events = new ArrayList<>();
+        var recording = new CompressionBenchmark.RecordingClient(new DeterministicSummaryLlmClient());
+        ConversationHistoryCompactor compactor =
+                new ConversationHistoryCompactor(recording, RETAIN_RECENT_ROUNDS);
+        List<IncrementalCompressionDiagnostics.CompressionEvent> events = new ArrayList<>();
+        StringBuilder log = new StringBuilder();
+
+        append(log, "=== s09 INCREMENTAL ROLLOUT COMPRESSION SIMULATION ===");
+        append(log, "fixture=" + rollout.fixture().toAbsolutePath().normalize());
+        append(log, "mode=offline");
+        append(log, "thresholdTokens=" + SIMULATED_CONTEXT_THRESHOLD);
+        append(log, "retainRecentRounds=" + RETAIN_RECENT_ROUNDS);
+        append(log, "totalReplayMessages=" + rollout.messages().size());
+        append(log, "");
 
         for (int i = 0; i < rollout.messages().size(); i++) {
             LlmClient.Message incoming = rollout.messages().get(i).message();
@@ -40,121 +44,93 @@ class RolloutIncrementalCompressionSimulationTest {
             if (!"user".equals(incoming.role())) continue;
 
             int beforeTokens = TokenBudget.estimateMessagesTokens(history);
-            if (beforeTokens < SIMULATED_CONTEXT_THRESHOLD) continue;
+            boolean triggered = beforeTokens >= SIMULATED_CONTEXT_THRESHOLD;
+            append(log, IncrementalCompressionDiagnostics.checkpoint(
+                    i + 1, rollout.messages().size(), incoming, beforeTokens,
+                    SIMULATED_CONTEXT_THRESHOLD, triggered));
+            if (!triggered) continue;
 
+            int eventIndex = events.size() + 1;
             int beforeMessages = history.size();
-            List<LlmClient.Message> expectedTail = recentTail(history, RETAIN_RECENT_ROUNDS);
+            var plan = IncrementalCompressionDiagnostics.plan(history, RETAIN_RECENT_ROUNDS);
+            append(log, IncrementalCompressionDiagnostics.planLog(
+                    eventIndex, plan, history, RETAIN_RECENT_ROUNDS));
+            append(log, "--- BEFORE HISTORY PREVIEW ---");
+            append(log, IncrementalCompressionDiagnostics.historyPreview(history));
+
             boolean compacted = compactor.compactIfNeeded(history, SIMULATED_CONTEXT_THRESHOLD);
-            if (!compacted) continue;
+            if (!compacted) {
+                append(log, "compressionSkipped=true");
+                continue;
+            }
 
             int afterTokens = TokenBudget.estimateMessagesTokens(history);
-            events.add(new CompressionEvent(
-                    events.size() + 1,
+            String summary = CompressionBenchmark.findSummary(history);
+            var event = new IncrementalCompressionDiagnostics.CompressionEvent(
+                    eventIndex,
                     i + 1,
                     beforeMessages,
                     history.size(),
                     beforeTokens,
                     afterTokens,
-                    endsWith(history, expectedTail),
-                    toolProtocolValid(history),
-                    !findSummary(history).isBlank()));
+                    CompressionBenchmark.endsWith(history, plan.tail()),
+                    CompressionBenchmark.toolProtocolValid(history),
+                    !summary.isBlank(),
+                    summary.length(),
+                    recording.inputTokens(),
+                    recording.outputTokens(),
+                    recording.cachedInputTokens(),
+                    IncrementalCompressionDiagnostics.preview(summary));
+            events.add(event);
+
+            append(log, IncrementalCompressionDiagnostics.resultLog(event));
+            append(log, IncrementalCompressionDiagnostics.coverageLog(
+                    eventIndex, plan, recording.requestText(), summary, history));
+            append(log, "--- AFTER HISTORY PREVIEW ---");
+            append(log, IncrementalCompressionDiagnostics.historyPreview(history));
+            append(log, "=== CONTINUE REPLAY ===");
+            append(log, "nextReadFromMessage=" + (i + 2));
+            append(log, "");
         }
 
-        writeIncrementalLog(rollout.fixture(), events, history);
+        appendFooter(log, events, history);
+        writeIncrementalLog(log);
 
         assertFalse(events.isEmpty(), "真实 rollout 回放过程中应该至少触发一次压缩");
         assertTrue(events.stream().allMatch(event -> event.afterTokens() < event.beforeTokens()),
                 "每次压缩后 token 都应该下降");
-        assertTrue(events.stream().allMatch(CompressionEvent::recentTailPreserved),
+        assertTrue(events.stream().allMatch(IncrementalCompressionDiagnostics.CompressionEvent::recentTailPreserved),
                 "每次压缩后都应该保留最近两轮上下文");
-        assertTrue(events.stream().allMatch(CompressionEvent::toolProtocolValid),
+        assertTrue(events.stream().allMatch(IncrementalCompressionDiagnostics.CompressionEvent::toolProtocolValid),
                 "每次压缩后 tool call / tool output 协议都应该保持合法");
-        assertTrue(events.stream().allMatch(CompressionEvent::summaryPresent),
+        assertTrue(events.stream().allMatch(IncrementalCompressionDiagnostics.CompressionEvent::summaryPresent),
                 "每次压缩后都应该插入历史摘要");
         assertTrue(!history.isEmpty() && "system".equals(history.get(0).role()),
                 "最终 history 应该继续保留 system 消息");
-        assertTrue(toolProtocolValid(history), "最终 history 的工具调用协议应该合法");
+        assertTrue(CompressionBenchmark.toolProtocolValid(history), "最终 history 的工具调用协议应该合法");
     }
 
-    private static List<LlmClient.Message> recentTail(List<LlmClient.Message> history, int rounds) {
-        int users = 0;
-        for (int i = history.size() - 1; i >= 0; i--) {
-            if ("user".equals(history.get(i).role())) users++;
-            if (users >= rounds) return List.copyOf(history.subList(i, history.size()));
-        }
-        return List.copyOf(history);
+    private static void appendFooter(StringBuilder log,
+                                     List<IncrementalCompressionDiagnostics.CompressionEvent> events,
+                                     List<LlmClient.Message> history) {
+        append(log, "=== FINAL STATE ===");
+        append(log, "compressionCount=" + events.size());
+        append(log, "finalMessages=" + history.size());
+        append(log, "finalTokens=" + TokenBudget.estimateMessagesTokens(history));
+        append(log, "finalRoles=" + IncrementalCompressionDiagnostics.roleCounts(history));
+        append(log, "finalToolProtocolValid=" + CompressionBenchmark.toolProtocolValid(history));
+        append(log, "");
+        append(log, "--- compression events ---");
+        for (var event : events) append(log, event.toSummaryLine());
     }
 
-    private static boolean endsWith(List<LlmClient.Message> actual, List<LlmClient.Message> suffix) {
-        if (suffix.size() > actual.size()) return false;
-        return actual.subList(actual.size() - suffix.size(), actual.size()).equals(suffix);
+    private static void append(StringBuilder log, String text) {
+        log.append(text).append('\n');
     }
 
-    private static boolean toolProtocolValid(List<LlmClient.Message> history) {
-        Set<String> calls = new LinkedHashSet<>();
-        Set<String> outputs = new LinkedHashSet<>();
-        for (LlmClient.Message message : history) {
-            if (message.toolCalls() != null) {
-                for (LlmClient.ToolCall call : message.toolCalls()) {
-                    if (!calls.add(call.id())) return false;
-                }
-            }
-            if ("tool".equals(message.role())) {
-                if (message.toolCallId() == null || !outputs.add(message.toolCallId())) return false;
-            }
-        }
-        return calls.equals(outputs);
-    }
-
-    private static String findSummary(List<LlmClient.Message> history) {
-        for (LlmClient.Message message : history) {
-            if (!"user".equals(message.role()) || message.content() == null) continue;
-            if (message.content().startsWith("[已压缩]")
-                    || message.content().startsWith("[宸插帇缂")) {
-                return message.content();
-            }
-        }
-        return "";
-    }
-
-    private static void writeIncrementalLog(Path fixture, List<CompressionEvent> events,
-                                            List<LlmClient.Message> finalHistory)
-            throws Exception {
+    private static void writeIncrementalLog(StringBuilder log) throws Exception {
         Path output = Path.of("target", "compression-benchmark", "incremental");
         Files.createDirectories(output);
-        StringBuilder log = new StringBuilder();
-        log.append("=== s09 INCREMENTAL ROLLOUT COMPRESSION SIMULATION ===\n");
-        log.append("fixture=").append(fixture.toAbsolutePath().normalize()).append('\n');
-        log.append("thresholdTokens=").append(SIMULATED_CONTEXT_THRESHOLD).append('\n');
-        log.append("retainRecentRounds=").append(RETAIN_RECENT_ROUNDS).append('\n');
-        log.append("compressionCount=").append(events.size()).append('\n');
-        log.append("finalMessages=").append(finalHistory.size()).append('\n');
-        log.append("finalTokens=").append(TokenBudget.estimateMessagesTokens(finalHistory)).append('\n');
-        log.append('\n');
-
-        for (CompressionEvent event : events) {
-            log.append(String.format(Locale.ROOT,
-                    "compression #%d at replayMessage=%d: messages=%d->%d tokens=%d->%d reduction=%.2f%% tailPreserved=%s toolProtocolValid=%s summaryPresent=%s%n",
-                    event.index(), event.replayMessageIndex(), event.beforeMessages(),
-                    event.afterMessages(), event.beforeTokens(), event.afterTokens(),
-                    event.reductionRatio() * 100.0, event.recentTailPreserved(),
-                    event.toolProtocolValid(), event.summaryPresent()));
-        }
         Files.writeString(output.resolve("benchmark.log"), log.toString(), StandardCharsets.UTF_8);
-    }
-
-    private record CompressionEvent(
-            int index,
-            int replayMessageIndex,
-            int beforeMessages,
-            int afterMessages,
-            int beforeTokens,
-            int afterTokens,
-            boolean recentTailPreserved,
-            boolean toolProtocolValid,
-            boolean summaryPresent) {
-        double reductionRatio() {
-            return beforeTokens == 0 ? 0.0 : (beforeTokens - afterTokens) / (double) beforeTokens;
-        }
     }
 }
