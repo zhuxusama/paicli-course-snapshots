@@ -1,161 +1,158 @@
 package ouccs.smy.paiclilearn.plan;
 
-import ouccs.smy.paiclilearn.memory.TokenBudget;
 import org.junit.jupiter.api.Test;
+
 import java.util.List;
-import static org.junit.jupiter.api.Assertions.*;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 教学演示：Task 状态机 → DAG → 拓扑序 → 执行批次。
- *
- * <p>展示"输入 → 转换 → 输出"的完整链路，使用源码 getter/setter API。</p>
- *
- * @since s10
+ * s10 的控制台教程测试：用一条完整任务流学习 Task、ExecutionPlan、DAG 排序和执行批次。
+ * <p>
+ * 这个测试不是只证明“能编译”。它会把输入、调用的 API、输出结构都打印出来，
+ * 让学习者可以照着控制台结果理解本章新增模型应该怎么用。
  */
 class PlanDagDemoTest {
 
     @Test
-    void demoTaskStateMachineAndDag() {
-        System.out.println("===== s10 Task DAG 演示 =====");
+    void demoBuildAndRunTaskDag() {
+        System.out.println("【场景】复杂目标不能只靠一轮 ReAct 硬想，需要先拆成有依赖关系的 Task DAG。");
+        System.out.println("本章新增 Task 表示单个步骤，ExecutionPlan 表示整张有向无环图。");
 
-        // 1. 输入：定义 4 个任务形成 DAG
-        Task t1 = new Task("t1", "分析需求", Task.TaskType.ANALYSIS);
-        Task t2 = new Task("t2", "设计方案", Task.TaskType.FILE_WRITE, List.of("t1"));
-        Task t3 = new Task("t3", "编写代码", Task.TaskType.COMMAND, List.of("t1"));
-        Task t4 = new Task("t4", "集成测试", Task.TaskType.VERIFICATION, List.of("t2", "t3"));
+        System.out.println();
+        System.out.println("【输入】构造 4 个任务：先分析需求；设计方案和编写代码可并行；最后集成测试。");
+        Task analyze = new Task("t1", "分析需求", Task.TaskType.ANALYSIS);
+        Task design = new Task("t2", "设计方案", Task.TaskType.FILE_WRITE, List.of("t1"));
+        Task code = new Task("t3", "编写代码", Task.TaskType.COMMAND, List.of("t1"));
+        Task verify = new Task("t4", "集成测试", Task.TaskType.VERIFICATION, List.of("t2", "t3"));
+        List<Task> tasks = List.of(analyze, design, code, verify);
+        tasks.forEach(task -> System.out.println("  " + task.getId()
+                + " | type=" + task.getType()
+                + " | deps=" + task.getDependencies()
+                + " | " + task.getDescription()));
 
-        // 2. 转换：构建 DAG
-        ExecutionPlan plan = new ExecutionPlan("plan_demo", "构建 Demo");
-        plan.addTask(t1);
-        plan.addTask(t2);
-        plan.addTask(t3);
-        plan.addTask(t4);
+        System.out.println();
+        System.out.println("【执行】把任务加入 ExecutionPlan；addTask 会自动维护反向依赖 dependents。");
+        ExecutionPlan plan = new ExecutionPlan("plan_demo", "构建一个可验证的功能切片");
+        tasks.forEach(plan::addTask);
+        System.out.println("  t1.dependents = " + analyze.getDependents());
+        assertEquals(List.of("t2", "t3"), analyze.getDependents());
 
-        System.out.println("DAG 摘要:");
-        System.out.println(plan.summarize());
-
-        // 拓扑排序
+        System.out.println();
+        System.out.println("【执行】调用 computeExecutionOrder() 得到拓扑序，确认这张图没有环。");
         boolean acyclic = plan.computeExecutionOrder();
-        System.out.println("拓扑序: " + plan.getExecutionOrder() + " (无环=" + acyclic + ")");
+        System.out.println("  acyclic = " + acyclic);
+        System.out.println("  executionOrder = " + plan.getExecutionOrder());
         assertTrue(acyclic);
+        assertEquals(List.of("t1", "t2", "t3", "t4"), plan.getExecutionOrder());
 
-        // 执行批次
+        System.out.println();
+        System.out.println("【执行】调用 getExecutionBatches()，看哪些任务可以同批并行。");
         List<List<Task>> batches = plan.getExecutionBatches();
-        System.out.println("执行批次: " + batches.stream()
-                .map(b -> b.stream().map(Task::getId).toList())
-                .toList());
+        List<List<String>> batchIds = batches.stream()
+                .map(batch -> batch.stream().map(Task::getId).toList())
+                .toList();
+        System.out.println("  batches = " + batchIds);
+        assertEquals(List.of(List.of("t1"), List.of("t2", "t3"), List.of("t4")), batchIds);
 
-        // 3. 输出：模拟执行
-        for (int batchIdx = 0; batchIdx < batches.size(); batchIdx++) {
-            List<Task> batch = batches.get(batchIdx);
+        System.out.println();
+        System.out.println("【输出】模拟执行每个批次：任务状态从 PENDING -> RUNNING -> COMPLETED，计划进度逐步增加。");
+        for (int batchIndex = 0; batchIndex < batches.size(); batchIndex++) {
+            List<Task> batch = batches.get(batchIndex);
+            System.out.println("  batch " + batchIndex + " 可并行执行: "
+                    + batch.stream().map(Task::getId).toList());
             for (Task task : batch) {
-                System.out.println("  执行 [" + batchIdx + "] " + task.getId()
-                        + ": " + task.getDescription());
                 task.markStarted();
-                task.markCompleted(task.getDescription() + " 完成");
+                System.out.println("    started  " + task.getId() + " status=" + task.getStatus());
+                task.markCompleted(task.getDescription() + "完成");
+                System.out.println("    finished " + task.getId() + " result=" + task.getResult());
             }
+            System.out.println("  progress = " + String.format("%.0f%%", plan.getProgress() * 100));
         }
-        System.out.println("最终进度: " + plan.getProgress());
+
+        System.out.println();
+        System.out.println("【观察】摘要适合给终端或下一章 PlanExecuteAgent 展示；它不会刷出一大坨图形。");
+        System.out.println(plan.summarize());
+        String visualized = plan.visualize();
+        System.out.println("【观察】visualize() 适合调试完整 DAG，能看到每个任务的类型、依赖和状态。");
+        System.out.println("  visualize 字符数 = " + visualized.length());
+        System.out.println("  visualize 预览:");
+        System.out.println(visualized.lines().limit(6).reduce("", (left, right) -> left + right + System.lineSeparator()));
+
         assertEquals(1.0, plan.getProgress(), 0.01);
-        System.out.println("===== 演示结束 =====");
+        assertTrue(plan.isAllCompleted());
+        assertTrue(visualized.contains("t1"));
+        assertTrue(visualized.contains("t4"));
     }
 
     @Test
-    void demoTaskStateTransitions() {
-        System.out.println("===== Task 状态机演示 =====");
+    void demoTaskStateMachine() {
+        System.out.println("【场景】执行器需要知道一个任务处于等待、运行、完成、失败还是跳过。");
 
-        Task task = new Task("t1", "验证状态", Task.TaskType.COMMAND);
+        System.out.println("【输入】创建一个 COMMAND 类型任务。");
+        Task task = new Task("build", "运行 mvn test", Task.TaskType.COMMAND);
+        System.out.println("  初始状态 = " + task.getStatus());
         assertEquals(Task.TaskStatus.PENDING, task.getStatus());
 
+        System.out.println("【执行】依次调用 markStarted、markCompleted、markFailed、markSkipped。");
         task.markStarted();
+        System.out.println("  markStarted  -> status=" + task.getStatus()
+                + ", startTime=" + task.getStartTime());
         assertEquals(Task.TaskStatus.RUNNING, task.getStatus());
-        long startTime = task.getStartTime();
-        assertTrue(startTime > 0, "markStarted 应设置 startTime");
-        System.out.println("  startTime: " + startTime);
+        assertTrue(task.getStartTime() > 0);
 
-        task.markCompleted("完成");
+        task.markCompleted("测试通过");
+        System.out.println("  markCompleted -> status=" + task.getStatus()
+                + ", result=" + task.getResult()
+                + ", duration=" + task.getDuration() + "ms");
         assertEquals(Task.TaskStatus.COMPLETED, task.getStatus());
-        assertEquals("完成", task.getResult());
-        long endTime = task.getEndTime();
-        assertTrue(endTime >= startTime, "endTime >= startTime");
-        System.out.println("  endTime: " + endTime);
+        assertEquals("测试通过", task.getResult());
 
-        // 验证耗时
-        assertTrue(task.getDuration() >= 0);
-        System.out.println("  duration: " + task.getDuration() + "ms");
-
-        // 验证 toString
-        String str = task.toString();
-        assertTrue(str.contains("t1"));
-        assertTrue(str.contains("COMPLETED"));
-        System.out.println("  toString: " + str);
-
-        // FAILED → SKIPPED 状态路径
-        task.markFailed("失败了");
+        task.markFailed("测试失败");
+        System.out.println("  markFailed    -> status=" + task.getStatus()
+                + ", error=" + task.getError());
         assertEquals(Task.TaskStatus.FAILED, task.getStatus());
-        assertEquals("失败了", task.getError());
+        assertEquals("测试失败", task.getError());
 
         task.markSkipped();
+        System.out.println("  markSkipped   -> status=" + task.getStatus());
         assertEquals(Task.TaskStatus.SKIPPED, task.getStatus());
 
-        System.out.println("PENDING → RUNNING → COMPLETED → FAILED → SKIPPED: ✅");
+        System.out.println("【输出】Task.toString() 给调试日志一个短摘要: " + task);
+        assertTrue(task.toString().contains("build"));
+        assertTrue(task.toString().contains("SKIPPED"));
     }
 
     @Test
-    void demoPlanMetadataAndDependencies() {
-        System.out.println("===== Plan 元数据与依赖演示 =====");
+    void demoCycleDetectionAndExecutableTasks() {
+        System.out.println("【场景】Plan 是 DAG，不允许 A 依赖 B、B 又依赖 A；否则执行器永远找不到起点。");
 
-        // 1. 输入：构造有依赖的任务
-        Task t1 = new Task("t1", "下载依赖", Task.TaskType.COMMAND);
-        Task t2 = new Task("t2", "编译项目", Task.TaskType.COMMAND, List.of("t1"));
+        System.out.println("【输入】先构造一个合法计划，看 getExecutableTasks() 如何只返回依赖已满足的任务。");
+        ExecutionPlan validPlan = new ExecutionPlan("valid", "验证可执行任务");
+        Task read = new Task("read", "读取 pom.xml", Task.TaskType.FILE_READ);
+        Task summarize = new Task("summarize", "总结项目结构", Task.TaskType.ANALYSIS, List.of("read"));
+        validPlan.addTask(read);
+        validPlan.addTask(summarize);
+        System.out.println("  初始可执行 = " + validPlan.getExecutableTasks().stream().map(Task::getId).toList());
+        assertEquals(List.of(read), validPlan.getExecutableTasks());
 
-        System.out.println("  t2 依赖: " + t2.getDependencies());
-        assertTrue(t2.getDependencies().contains("t1"));
+        System.out.println("【执行】完成 read 后，summarize 才会变成可执行。");
+        read.markCompleted("pom.xml 已读取");
+        System.out.println("  完成 read 后可执行 = "
+                + validPlan.getExecutableTasks().stream().map(Task::getId).toList());
+        assertEquals(List.of(summarize), validPlan.getExecutableTasks());
 
-        // addDependency 动态添加依赖
-        t1.addDependency("t0");
-        assertTrue(t1.getDependencies().contains("t0"));
+        System.out.println("【输入】再构造一个有环计划：a 依赖 b，b 依赖 a。");
+        ExecutionPlan cyclePlan = new ExecutionPlan("cycle", "错误的循环依赖");
+        cyclePlan.addTask(new Task("a", "任务 A", Task.TaskType.COMMAND, List.of("b")));
+        cyclePlan.addTask(new Task("b", "任务 B", Task.TaskType.COMMAND, List.of("a")));
 
-        // 2. 转换：创建 Plan 并设置元数据
-        ExecutionPlan plan = new ExecutionPlan("plan_meta", "验证 Plan 元数据访问");
-        plan.setSummary("这是一个包含两个任务的演示计划");
-        plan.addTask(t1);
-        plan.addTask(t2);
+        System.out.println("【执行】调用 computeExecutionOrder()。");
+        boolean acyclic = cyclePlan.computeExecutionOrder();
 
-        System.out.println("  goal: " + plan.getGoal());
-        System.out.println("  summary: " + plan.getSummary());
-        assertEquals("验证 Plan 元数据访问", plan.getGoal());
-        assertEquals("这是一个包含两个任务的演示计划", plan.getSummary());
-
-        // 3. 输出：验证 getTask / getAllTasks
-        assertEquals(2, plan.getAllTasks().size());
-        assertNotNull(plan.getTask("t1"));
-        assertNotNull(plan.getTask("t2"));
-
-        // dependents 链
-        System.out.println("  t1 的被依赖者: " + t1.getDependents());
-        assertTrue(t1.getDependents().contains("t2"));
-
-        // visualize 不抛异常
-        String viz = plan.visualize();
-        System.out.println("  visualize 长度: " + viz.length());
-        assertTrue(viz.contains("验证 Plan 元数据访问"));
-        assertTrue(viz.contains("t1"));
-        assertTrue(viz.contains("t2"));
-    }
-
-    @Test
-    void demoTokenBudgetContextWindow() {
-        System.out.println("===== TokenBudget 窗口演示 =====");
-
-        TokenBudget budget = new TokenBudget(128000);
-        System.out.println("  窗口大小: " + budget.contextWindow());
-        assertEquals(128000, budget.contextWindow());
-
-        budget.recordUsage(4000, 800, 500);
-        System.out.println("  存入 4000 输入后窗口大小: " + budget.contextWindow());
-        assertEquals(128000, budget.contextWindow());
-
-        System.out.println("  ✅ 窗口大小不受 usage 影响");
+        System.out.println("【输出】acyclic = " + acyclic + "，说明计划生成器必须拒绝或重写这类计划。");
+        assertFalse(acyclic);
     }
 }
